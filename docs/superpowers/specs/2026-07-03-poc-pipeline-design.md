@@ -5,11 +5,17 @@ Status: approved for planning
 
 ## Purpose
 
-A local, small-scale proof-of-concept demonstrating six architectural claims
-for an AI Video Generation Architect interview. Not a production system —
-scope is deliberately one lesson, one worked example, two rendered scenes.
+Started as a proof-of-concept for an AI Video Generation Architect interview;
+now also an ongoing personal project built collaboratively beyond that
+interview. Scope stays deliberately small for this first pass — one lesson,
+one learning objective, a duration the user picks (1–10 minutes, in 1-minute
+increments) — but the architecture is meant to be a sane starting point for
+productionizing later, not a throwaway. Concretely: seams (domain-pack
+interface, artifact storage, render dispatch) are chosen so that later growth
+(more domain packs, more scenes, real cloud deployment) doesn't require
+redesigning them, without building out that future capacity now.
 
-The six claims this POC must prove, concretely and observably:
+The six claims this project must prove, concretely and observably:
 
 1. Every pipeline stage emits a versioned, content-addressed JSON artifact.
    Re-runs skip stages whose input hash hasn't changed.
@@ -75,10 +81,44 @@ class DomainPack(Protocol):
   deeply exercised in this POC.
 
 `domains/education/` is the only implementation: `EducationSpec` (learning
-objective, worked example expression, target duration, audience),
-`structure()` implemented as an LLM "pedagogy analyst" call, and the sympy
-gate comparing the script's stated final answer against
-`sympy.simplify(expression)` for equivalence.
+objective, worked example expression, `target_duration_minutes` (1–10),
+audience), `structure()` implemented as an LLM "pedagogy analyst" call, and
+the sympy gate comparing a worked-example scene's stated final answer
+against `sympy.simplify(expression)` for equivalence.
+
+## Duration & content model
+
+The user picks a target duration, 1–10 minutes in 1-minute increments.
+Rather than letting the pedagogy agent freely invent content depth to fill
+arbitrary time (which reintroduces multi-topic-curriculum complexity and
+risks unnatural padding), `structure()` selects from a **fixed menu of scene
+types**, owned entirely by `domains/education` — core never sees these
+names, only the `render_hint` each stub carries:
+
+| Scene type            | render_hint       | Verified? | Notes                                    |
+|------------------------|-------------------|-----------|-------------------------------------------|
+| `intro`                | `layout`          | no        | exactly one per lesson                    |
+| `concept_explanation`  | `layout`          | no        | may repeat, different framing/analogy     |
+| `worked_example`       | `equation_morph`  | yes       | the example specified in the spec         |
+| `guided_practice`      | `equation_morph`  | yes       | same skill, easier numbers — reinforcement, not a new topic |
+| `recap`                | `layout`          | no        | exactly one per lesson                    |
+
+`structure()`'s job is a budgeting decision — picking a sequence and
+per-scene duration from this menu to approximate the requested total
+(treated as a soft target with tolerance, e.g. ±30s; not an exact frame
+count) — not an open-ended content-design decision. This keeps "one
+learning objective" intact (`guided_practice` reinforces the same skill)
+while still growing scene count meaningfully with duration: a 2-minute
+lesson might be `intro, worked_example, recap` (3 scenes); a 10-minute
+lesson might add several `concept_explanation` variants and a
+`guided_practice` pass (8–12 scenes). Longer lessons naturally exercise the
+sympy verification gate more than once (`worked_example` **and**
+`guided_practice`), reinforcing claim #4 without extra design work.
+
+A second scene-type menu (a different pedagogical style, or an entirely
+different domain pack's own vocabulary) is a later, additive change — either
+a new field on `EducationSpec` the domain pack branches on internally, or a
+new domain pack module entirely. Neither requires touching `packages/core`.
 
 ## Artifact schema & content-addressing
 
@@ -89,8 +129,12 @@ that produced it — so bumping a node's prompt/logic invalidates its cached
 output even if the upstream input didn't change. This is what makes
 artifacts *versioned*, not just content-addressed.
 
-Stored at `artifacts/<hash>/artifact.json`, plus any binary outputs
-(`.mp4`, `.wav`) alongside in the same directory.
+Stored via an `ArtifactStore` interface (`put(hash, artifact)`,
+`get(hash)`, `exists(hash)`) at logical path `<hash>/artifact.json`, plus any
+binary outputs (`.mp4`, `.wav`) alongside. Local dev implementation writes
+to `./artifacts/<hash>/` on disk; the GCP deployment implementation writes
+to a GCS bucket at the same relative layout — same interface, config-
+selected backend, no node code depends on which one is active.
 
 Chain:
 
@@ -131,7 +175,8 @@ load_spec
   → scene_planner               (core; render_hint -> renderer table)
   → [INTERRUPT B: review/edit SceneGraph, incl. renderer override]
   → verification_gate           (domain.verification_gates per scene; blocks on fail)
-  → Send() fan-out per scene:
+  → Send() fan-out per scene (N scenes, not fixed to 2 — driven by
+    however many scenes structure() picked for the requested duration):
         tts_scene → render_scene (remotion | manim, chosen by renderer tag)
         → scene_av_mux
   → collect_scenes              (fan-in; all Sends complete)
@@ -141,7 +186,10 @@ load_spec
 
 - The `Send` routing function that chooses `render_remotion` vs
   `render_manim` per scene is a first-class, inspectable function — this is
-  claim #5's "the routing decision, not just the render output."
+  claim #5's "the routing decision, not just the render output." It's also
+  the render-dispatch seam: see "Deployment (GCP)" below for how the same
+  per-scene payload is dispatched differently (in-process vs. queued)
+  depending on environment, without changing this graph.
 - Both interrupts use LangGraph's `interrupt()` inside the node and resume
   via `Command(resume={"action": "approve"} | {"action": "edit", "artifact":
   {...}})`. An "edit" resume replaces the artifact, re-hashes it, and
@@ -174,6 +222,44 @@ load_spec
   `uvicorn` by hand, hit "Resume" — the graph continues from the last
   Postgres-persisted checkpoint, proving state survived process death.
 
+## Deployment (GCP)
+
+Private/personal use for now, but built on infrastructure that's a
+reasonable starting point for real deployment later — serverless, not a
+managed VM:
+
+- **Cloud Run** — two services, `api` (FastAPI + compiled graph) and `web`
+  (Next.js), mirroring the local FastAPI/Next.js split.
+- **Cloud SQL for Postgres** — same `PostgresSaver` checkpointer and
+  `artifacts` metadata table as local dev; only the connection target
+  changes.
+- **GCS bucket** — the `ArtifactStore` implementation described above;
+  same `<hash>/...` layout as local disk.
+- **Cloud Tasks** — per-scene render dispatch in place of in-process
+  `Send()`. Locally, the fan-out step calls `render_scene` directly and
+  blocks in-process until it returns. On Cloud Run this can't work the same
+  way — Manim/FFmpeg renders can run long enough that blocking a request
+  thread on them doesn't scale — so the async path reuses the same
+  pause/resume primitive already built for the human interrupts (claims #3
+  and #6), just machine-triggered instead of human-triggered: `render_scene`
+  enqueues a Cloud Task carrying the scene payload (scene id, renderer tag,
+  render params, `scene_input_hash`) and the node pauses via
+  LangGraph's `interrupt()`, checkpointed to Postgres like any other pause.
+  The Cloud Task calls `POST /render-scene` on the `api` service, which runs
+  the actual render synchronously within that request, writes the
+  `RenderManifest` to the `ArtifactStore`, then calls
+  `POST /runs/:id/scene-complete`, which resumes the paused node via
+  `Command(resume={"scene_id": ..., "render_manifest_hash": ...})`. One
+  `RenderDispatcher` interface (`dispatch(scene_payload) -> DispatchMode`,
+  where `DispatchMode` is `sync` locally or `pending` on GCP, telling the
+  node whether to return immediately or call `interrupt()`) with two
+  implementations, chosen by config — the graph node's shape doesn't change
+  between environments, only which branch of the `if` it takes.
+- Known gap, deliberately deferred: the default `TTSProvider` shells out to
+  macOS `say`, which doesn't exist on Cloud Run's Linux containers. Swapping
+  to a real API-backed (or open-source local) provider behind the existing
+  `TTSProvider` interface is a follow-up, not solved in this pass.
+
 ## TTS
 
 - `TTSProvider` interface with one method, `synthesize(text, out_path) ->
@@ -198,8 +284,13 @@ load_spec
 
 ## Explicitly out of scope
 
-- Multi-lesson batches, multi-voice narration, a grader/judge panel,
-  cloud deployment.
+- Concurrent runs (multiple lessons generating simultaneously). The
+  scalability axis this pass targets is scene count per run (up to
+  roughly a dozen, driven by the 10-minute duration cap), not concurrent
+  run isolation. Revisit if that becomes a real requirement later.
+- Multiple learning objectives / multiple independent worked examples per
+  lesson, multi-lesson batches, multi-voice narration, a grader/judge
+  panel.
 - Source-document ingestion / RAG-based spec extraction. The interface
   already accommodates this later (`spec_schema` could grow an optional
   `source_documents` field; `structure()` could do retrieval internally)
@@ -209,3 +300,8 @@ load_spec
   retrieval; adding it now would be an unmotivated dependency.
 - Auto-retry/regeneration loop on verification failure — a mismatch halts
   the run; it does not feed back into the LLM automatically.
+- Production hardening of the GCP deployment: no CI/CD pipeline,
+  Terraform/IaC, multi-user auth, autoscaling tuning, or cost controls.
+  The deploy target is a real but manually-run private instance (you're
+  the only user); the `ArtifactStore`/`RenderDispatcher` seams are what
+  carry this toward production later, not a deploy pipeline built now.
