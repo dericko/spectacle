@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+*.tsbuildinfo
+
+# Env
+.env
+.env.local
+
+# Artifacts and renders
+artifacts/
+*.mp4
+*.wav
+*.mp3
+
+# OS
+.DS_Store
