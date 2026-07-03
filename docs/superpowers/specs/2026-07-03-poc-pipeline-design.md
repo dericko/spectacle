@@ -157,13 +157,23 @@ Chain:
    `H_scenegraph` (the top-level receipt) and scene B's `scene_input_hash`,
    but scene A's `scene_input_hash` is unchanged.
 9. Per scene, in order: `NarrationClip` (TTS audio + duration, keyed by
-   `scene_input_hash`) → `RenderManifest` (video rendered to match that
-   duration, keyed by `scene_input_hash`) → `SceneFinal` (av-muxed clip,
-   keyed by `scene_input_hash`). Each render/mux node checks
+   `scene_input_hash`) → for `equation_morph` scenes only, a `ScenePreview`
+   (Manim's low-quality `-ql` render, video-only, no audio — fast, just a
+   visual sanity check of the equation-morph animation) → `RenderManifest`
+   (full-fidelity video rendered to match that duration, keyed by
+   `scene_input_hash`) → `SceneFinal` (av-muxed clip, keyed by
+   `scene_input_hash`). Each render/mux node checks
    `artifacts/<scene_input_hash>/scene_final.mp4` first and skips work if
-   present.
+   present. `ScenePreview` is not gated behind an interrupt — it's written
+   to the `ArtifactStore` and surfaced to the UI immediately, purely for
+   early visibility, not as an approval checkpoint.
 10. `FinalManifest` (concatenation of all `SceneFinal` clips in scene
     order) → `H_final`.
+
+Every artifact is written to the `ArtifactStore` and its metadata row
+inserted the moment it's produced — not batched until the run finishes.
+This is what makes progressive visibility (below) possible: the UI is
+reading state that's already there, not waiting on a final node.
 
 ## LangGraph node/edge structure
 
@@ -177,7 +187,9 @@ load_spec
   → verification_gate           (domain.verification_gates per scene; blocks on fail)
   → Send() fan-out per scene (N scenes, not fixed to 2 — driven by
     however many scenes structure() picked for the requested duration):
-        tts_scene → render_scene (remotion | manim, chosen by renderer tag)
+        tts_scene → render_scene (remotion | manim, chosen by renderer tag;
+          for manim scenes, emits a fast low-quality ScenePreview first,
+          then the full-fidelity render — see artifact chain above)
         → scene_av_mux
   → collect_scenes              (fan-in; all Sends complete)
   → mux_final                   (ffmpeg concat of SceneFinal clips)
@@ -198,6 +210,13 @@ load_spec
 - Verification failure does not loop back to the LLM for auto-retry (out of
   scope); it halts the run with a `blocked` status and the mismatch detail
   visible in the `VerificationResult` artifact.
+- **Run modes** — a per-run setting, chosen at `POST /runs`, that governs
+  only Interrupt A and Interrupt B: `accept_edits` pauses at both and
+  requires an explicit approve/edit before continuing (the default);
+  `auto` auto-approves both without pausing, for a hands-off run once
+  you trust the spec. The `verification_gate` node is **exempt from this
+  toggle** — a sympy mismatch halts the run in either mode, since it's a
+  correctness check, not a review checkpoint.
 
 ## Backend process
 
@@ -214,10 +233,16 @@ load_spec
   also stored in Postgres (a plain `artifacts` table) so the Next.js
   artifact-tree view can query staleness/cache state without walking the
   filesystem.
-- Endpoints: `POST /runs`, `GET /runs/:id`, `GET /runs/:id/artifacts` (tree
-  view data), `POST /runs/:id/simulate-crash` (calls `os._exit(1)` inside
-  the process — a real crash, not a clean shutdown), `POST /runs/:id/resume`,
-  `POST /runs/:id/interrupt/resume` (submits an approve/edit payload).
+- Endpoints: `POST /runs` (accepts the spec and a `run_mode`:
+  `accept_edits` | `auto`), `GET /runs/:id`, `GET /runs/:id/artifacts` (tree
+  view data, polled/streamed for progressive updates), `POST
+  /runs/:id/simulate-crash` (calls `os._exit(1)` inside the process — a
+  real crash, not a clean shutdown), `POST /runs/:id/resume`, `POST
+  /runs/:id/interrupt/chat` (takes a chat message, returns a proposed
+  edited artifact via the edit-assistant call — does not itself resume the
+  graph), `POST /runs/:id/interrupt/resume` (submits the final
+  approve/edit payload, whether it came from the chat flow or a direct
+  JSON edit).
 - Crash demo: start a run, hit "Simulate Crash" mid-render, restart
   `uvicorn` by hand, hit "Resume" — the graph continues from the last
   Postgres-persisted checkpoint, proving state survived process death.
@@ -274,12 +299,31 @@ managed VM:
 
 ## Next.js app (`apps/interview-demo`)
 
-- "Start Run" trigger (POST to FastAPI `/runs`), polling for status.
-- Artifact tree view: nodes colored by cached / stale / pending, backed by
-  the Postgres `artifacts` metadata table.
-- Review/edit panel: zod-validated editable JSON views for `Script` and
-  `SceneGraph` artifacts (including the per-scene renderer-tag dropdown),
-  approve/reject buttons, wired to `/runs/:id/interrupt/resume`.
+Modeled loosely on the Claude Code CLI's own UX: a chat interface sitting
+alongside an artifact/state view, plus a run-mode toggle analogous to
+`accept-edits` vs `auto` permission modes.
+
+- "Start Run" trigger (POST to FastAPI `/runs`), with a run-mode selector
+  (`accept_edits` / `auto`, see above) chosen at start time.
+- Progressive artifact stream: the artifact tree view (cached / stale /
+  pending, backed by the Postgres `artifacts` metadata table) updates as
+  each artifact lands — including per-scene `ScenePreview` and `SceneFinal`
+  clips as they complete, not just the final `FinalManifest` — so the user
+  can watch scenes arrive individually rather than waiting on the whole run.
+- Review/edit interface, at Interrupt A and Interrupt B (in `accept_edits`
+  mode): a chat panel alongside the current artifact (`Script` or
+  `SceneGraph`, rendered read-only) for "vibe-editing" — the user describes
+  a change in natural language ("make scene 3 shorter," "switch the recap
+  to Manim") rather than hand-editing JSON. This is backed by one new
+  core-level, domain-agnostic call: an edit-assistant that takes
+  `(artifact_type, current_artifact, chat_message, history) -> proposed
+  artifact`, validated against the same pydantic schema as any other
+  artifact of that type before use. Architecturally this changes nothing
+  about the interrupt/resume mechanism — the chat turn just constructs the
+  edited artifact; submitting it is still the same
+  `Command(resume={"action": "edit", "artifact": {...}})` a direct JSON
+  edit would produce. A raw JSON view stays available alongside the chat
+  for direct edits when that's faster than describing the change.
 - "Simulate Crash" / "Resume" buttons for the claim-#2 demo.
 
 ## Explicitly out of scope
