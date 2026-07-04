@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from spectacle_core.renderers.remotion_render import render_remotion
+from spectacle_core.renderers.remotion_render import render_remotion, _REMOTION_PROJECT_DIR
 
 
 def test_render_remotion_invokes_npx_remotion_render_with_props(tmp_path):
@@ -19,3 +19,4 @@ def test_render_remotion_invokes_npx_remotion_render_with_props(tmp_path):
     props = json.loads(cmd[props_index])
     assert props["onScreenText"] == "Hi!"
     assert props["durationInSeconds"] == 20.0
+    assert mock_run.call_args.kwargs["cwd"] == _REMOTION_PROJECT_DIR
