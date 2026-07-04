@@ -34,3 +34,15 @@ def test_unknown_action_raises():
     with patch("spectacle_core.nodes.interrupts.interrupt", return_value={"action": "nonsense"}):
         with pytest.raises(ValueError, match="unknown interrupt action"):
             interrupt_review(Dummy(text="hello"), Dummy, run_mode="accept_edits")
+
+
+def test_missing_action_key_raises():
+    with patch("spectacle_core.nodes.interrupts.interrupt", return_value={"artifact": {"text": "hello"}}):
+        with pytest.raises(ValueError, match="missing required 'action' key"):
+            interrupt_review(Dummy(text="hello"), Dummy, run_mode="accept_edits")
+
+
+def test_edit_action_missing_artifact_key_raises():
+    with patch("spectacle_core.nodes.interrupts.interrupt", return_value={"action": "edit"}):
+        with pytest.raises(ValueError, match="missing required 'artifact' key"):
+            interrupt_review(Dummy(text="hello"), Dummy, run_mode="accept_edits")

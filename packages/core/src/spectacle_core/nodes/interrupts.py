@@ -16,8 +16,14 @@ def interrupt_review(
 
     decision = interrupt({"artifact": artifact.model_dump(mode="json")})
 
-    if decision["action"] == "approve":
+    action = decision.get("action")
+    if action is None:
+        raise ValueError(f"missing required 'action' key in interrupt decision: {decision!r}")
+    if action == "approve":
         return artifact
-    if decision["action"] == "edit":
-        return artifact_cls.model_validate(decision["artifact"])
-    raise ValueError(f"unknown interrupt action: {decision['action']!r}")
+    if action == "edit":
+        artifact_data = decision.get("artifact")
+        if artifact_data is None:
+            raise ValueError(f"missing required 'artifact' key in interrupt decision with action='edit': {decision!r}")
+        return artifact_cls.model_validate(artifact_data)
+    raise ValueError(f"unknown interrupt action: {action!r}")
