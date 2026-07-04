@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: spectacle
+      POSTGRES_USER: spectacle
+      POSTGRES_PASSWORD: spectacle
+    ports:
+      - "5432:5432"
+    volumes:
+      - spectacle_pgdata:/var/lib/postgresql/data
+
+volumes:
+  spectacle_pgdata:
