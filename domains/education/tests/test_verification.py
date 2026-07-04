@@ -43,3 +43,25 @@ def test_zero_division_fails_without_raising():
     outcome = sympy_equivalence_gate(_scene("100 % 0", "0"))
     assert outcome.passed is False
     assert "could not parse" in outcome.detail
+
+
+def test_code_injection_attempt_fails_without_executing():
+    """sympy.sympify evaluates via eval() internally; an LLM-generated
+    expression is untrusted input and must never reach it unsanitized."""
+    outcome = sympy_equivalence_gate(
+        _scene("__import__('os').system('touch /tmp/spectacle_pwned')", "7/8")
+    )
+    assert outcome.passed is False
+    assert "could not parse" in outcome.detail
+    import os
+    assert not os.path.exists("/tmp/spectacle_pwned")
+
+
+def test_attribute_chain_sandbox_escape_fails_without_executing():
+    """Guards against eval-based sandbox escapes that don't need any names
+    from a restricted globals dict (e.g. () literal + attribute traversal)."""
+    outcome = sympy_equivalence_gate(
+        _scene("().__class__.__bases__[0].__subclasses__()", "7/8")
+    )
+    assert outcome.passed is False
+    assert "could not parse" in outcome.detail
