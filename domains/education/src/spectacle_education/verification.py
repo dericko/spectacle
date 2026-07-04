@@ -14,7 +14,7 @@ def sympy_equivalence_gate(scene: SceneGraphEntry) -> VerificationOutcome:
     try:
         expected = sympy.simplify(sympy.sympify(scene.expression))
         stated = sympy.simplify(sympy.sympify(scene.stated_answer))
-    except (SympifyError, TypeError) as exc:
+    except (SympifyError, TypeError, ZeroDivisionError) as exc:
         return VerificationOutcome(passed=False, detail=f"could not parse expression: {exc}")
 
     passed = sympy.simplify(expected - stated) == 0

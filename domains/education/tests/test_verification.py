@@ -36,3 +36,10 @@ def test_malformed_expression_fails_without_raising():
 def test_missing_stated_answer_fails_without_raising():
     outcome = sympy_equivalence_gate(_scene("3/4 + 1/8", None))
     assert outcome.passed is False
+
+
+def test_zero_division_fails_without_raising():
+    """Regression test for ZeroDivisionError in modulo with zero divisor."""
+    outcome = sympy_equivalence_gate(_scene("100 % 0", "0"))
+    assert outcome.passed is False
+    assert "could not parse" in outcome.detail
