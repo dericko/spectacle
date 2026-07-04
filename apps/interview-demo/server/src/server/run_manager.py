@@ -48,3 +48,20 @@ class RunManager:
 
     def list_artifacts(self, run_id: str) -> list[dict]:
         return self.metadata.list_for_run(run_id)
+
+    def resume_run(self, run_id: str, payload: dict) -> dict:
+        from langgraph.types import Command
+
+        store = LocalFileArtifactStore(self.artifact_root)
+        with PostgresSaver.from_conn_string(self.pg_conn) as checkpointer:
+            checkpointer.setup()
+            graph = build_graph(
+                domain_pack=education_pack, store=store,
+                tts_provider=MacSayTTSProvider(), checkpointer=checkpointer,
+                metadata_recorder=lambda h, stage, scene_id=None: self.metadata.record(run_id, h, stage, scene_id),
+            )
+            config = {"configurable": {"thread_id": run_id}}
+            result = graph.invoke(Command(resume=payload), config=config)
+        status = {"status": "paused" if "__interrupt__" in result else "done", "result": result}
+        self._statuses[run_id] = status
+        return status
