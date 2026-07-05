@@ -17,21 +17,44 @@ export function ReviewPanel({
   const [message, setMessage] = useState("");
   const [history, setHistory] = useState<Array<Record<string, unknown>>>([]);
   const [jsonDraft, setJsonDraft] = useState(JSON.stringify(currentArtifact, null, 2));
+  const [error, setError] = useState<string | null>(null);
 
   async function sendChatEdit() {
-    const { proposed_artifact } = await postInterruptChat(runId, artifactType, artifact, message, history);
-    setArtifact(proposed_artifact);
-    setJsonDraft(JSON.stringify(proposed_artifact, null, 2));
-    setHistory([...history, { role: "user", content: message }, { role: "assistant", content: JSON.stringify(proposed_artifact) }]);
-    setMessage("");
+    setError(null);
+    try {
+      const { proposed_artifact } = await postInterruptChat(runId, artifactType, artifact, message, history);
+      setArtifact(proposed_artifact);
+      setJsonDraft(JSON.stringify(proposed_artifact, null, 2));
+      setHistory([...history, { role: "user", content: message }, { role: "assistant", content: JSON.stringify(proposed_artifact) }]);
+      setMessage("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Chat edit failed");
+    }
   }
 
   async function approve() {
-    await postInterruptResume(runId, { action: "approve" });
+    setError(null);
+    try {
+      await postInterruptResume(runId, { action: "approve" });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Approve failed");
+    }
   }
 
   async function submitEditedJson() {
-    await postInterruptResume(runId, { action: "edit", artifact: JSON.parse(jsonDraft) });
+    setError(null);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(jsonDraft);
+    } catch {
+      setError("Invalid JSON — please fix the syntax before submitting.");
+      return;
+    }
+    try {
+      await postInterruptResume(runId, { action: "edit", artifact: parsed });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Submit failed");
+    }
   }
 
   return (
@@ -48,6 +71,11 @@ export function ReviewPanel({
         <textarea value={jsonDraft} onChange={(e) => setJsonDraft(e.target.value)} rows={20} style={{ width: "100%" }} />
         <button onClick={submitEditedJson}>Submit edited JSON</button>
       </div>
+      {error && (
+        <div style={{ color: "red", marginTop: 8 }} role="alert">
+          {error}
+        </div>
+      )}
     </div>
   );
 }

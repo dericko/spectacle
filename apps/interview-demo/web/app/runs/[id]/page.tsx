@@ -25,7 +25,7 @@ export default function RunPage({ params }: { params: { id: string } }) {
         <ReviewPanel
           runId={params.id}
           artifactType="Script"
-          currentArtifact={(status!.result as Record<string, unknown>).script as Record<string, unknown>}
+          currentArtifact={((status!.result as Record<string, unknown>).script as Record<string, unknown>) ?? {}}
         />
       )}
       <ArtifactTree runId={params.id} />
