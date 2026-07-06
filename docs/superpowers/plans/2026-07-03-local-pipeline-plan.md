@@ -4,7 +4,7 @@
 
 **Goal:** Build the local, fully-working version of the Spectacle pipeline — a lesson spec goes in, a rendered MP4 comes out, via a LangGraph graph with a Postgres checkpointer, two human-review interrupts, an independent sympy verification gate, per-scene Remotion/Manim renderer routing, and a Next.js chat+artifacts UI — demonstrating all six architectural claims from the design spec end to end on one machine.
 
-**Architecture:** Three Python packages (`packages/core` — engine, no domain imports; `domains/education` — the only domain pack; `apps/interview-demo/server` — FastAPI wiring) plus a Next.js frontend and a small Remotion renderer project, built bottom-up: hashing/artifact-store primitives → domain-pack protocol and education pack → LangGraph nodes → renderers/TTS → FastAPI → Next.js. GCP deployment (Cloud Run/Cloud Tasks/GCS/Cloud SQL) is **out of scope for this plan** — it's a follow-on plan once this local system works; the `ArtifactStore` and `RenderDispatcher`-shaped seams below exist specifically so that later plan doesn't require rework here.
+**Architecture:** Three Python packages (`packages/core` — engine, no domain imports; `domains/education` — the only domain pack; `apps/server` — FastAPI wiring) plus a Next.js frontend and a small Remotion renderer project, built bottom-up: hashing/artifact-store primitives → domain-pack protocol and education pack → LangGraph nodes → renderers/TTS → FastAPI → Next.js. GCP deployment (Cloud Run/Cloud Tasks/GCS/Cloud SQL) is **out of scope for this plan** — it's a follow-on plan once this local system works; the `ArtifactStore` and `RenderDispatcher`-shaped seams below exist specifically so that later plan doesn't require rework here.
 
 **Tech Stack:** Python 3.11+, LangGraph (+ `langgraph-checkpoint-postgres`), pydantic v2, sympy, Manim, FastAPI + uvicorn, psycopg3, pytest; Next.js (TypeScript) + Remotion; Postgres via docker-compose; macOS `say` + ffmpeg/ffprobe for TTS.
 
@@ -80,7 +80,7 @@ domains/education/
     test_structure_agent.py
     test_verification.py
 
-apps/interview-demo/
+apps//
   server/
     pyproject.toml
     src/server/
@@ -115,8 +115,8 @@ docker-compose.yml           # local Postgres for the checkpointer + artifacts m
 - Create: `packages/core/src/spectacle_core/__init__.py`
 - Create: `domains/education/pyproject.toml`
 - Create: `domains/education/src/spectacle_education/__init__.py`
-- Create: `apps/interview-demo/server/pyproject.toml`
-- Create: `apps/interview-demo/server/src/server/__init__.py`
+- Create: `apps/server/pyproject.toml`
+- Create: `apps/server/src/server/__init__.py`
 - Create: `pytest.ini`
 - Modify: `.gitignore` (already ignores `__pycache__/`, `.venv/` — no change needed, verify only)
 
@@ -169,7 +169,7 @@ where = ["src"]
 
 - [ ] **Step 4: Create `domains/education/src/spectacle_education/__init__.py`** (empty file, populated in Task 8)
 
-- [ ] **Step 5: Create `apps/interview-demo/server/pyproject.toml`**
+- [ ] **Step 5: Create `apps/server/pyproject.toml`**
 
 ```toml
 [project]
@@ -192,7 +192,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 ```
 
-- [ ] **Step 6: Create `apps/interview-demo/server/src/server/__init__.py`** (empty file)
+- [ ] **Step 6: Create `apps/server/src/server/__init__.py`** (empty file)
 
 - [ ] **Step 7: Create root `pytest.ini`**
 
@@ -201,7 +201,7 @@ where = ["src"]
 testpaths =
     packages/core/tests
     domains/education/tests
-    apps/interview-demo/server/tests
+    apps/server/tests
 ```
 
 - [ ] **Step 8: Install everything editable and confirm pytest collects (no tests yet)**
@@ -209,7 +209,7 @@ testpaths =
 Run:
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -e packages/core -e domains/education -e apps/interview-demo/server pytest
+pip install -e packages/core -e domains/education -e apps/server pytest
 pytest --collect-only
 ```
 Expected: exits 0, "no tests ran" (directories exist but are empty).
@@ -219,7 +219,7 @@ Expected: exits 0, "no tests ran" (directories exist but are empty).
 ```bash
 git add packages/core/pyproject.toml packages/core/src \
         domains/education/pyproject.toml domains/education/src \
-        apps/interview-demo/server/pyproject.toml apps/interview-demo/server/src \
+        apps/server/pyproject.toml apps/server/src \
         pytest.ini
 git commit -m "chore: scaffold three-package Python workspace"
 ```
@@ -1956,11 +1956,11 @@ git commit -m "feat(core): add TTSProvider protocol and macOS say implementation
 - Create: `packages/core/src/spectacle_core/renderers/remotion_render.py`
 - Create: `packages/core/src/spectacle_core/renderers/manim_scene.py`
 - Create: `packages/core/src/spectacle_core/renderers/manim_render.py`
-- Create: `apps/interview-demo/renderer-remotion/package.json`
-- Create: `apps/interview-demo/renderer-remotion/tsconfig.json`
-- Create: `apps/interview-demo/renderer-remotion/src/index.ts`
-- Create: `apps/interview-demo/renderer-remotion/src/Root.tsx`
-- Create: `apps/interview-demo/renderer-remotion/src/LayoutScene.tsx`
+- Create: `apps/renderer-remotion/package.json`
+- Create: `apps/renderer-remotion/tsconfig.json`
+- Create: `apps/renderer-remotion/src/index.ts`
+- Create: `apps/renderer-remotion/src/Root.tsx`
+- Create: `apps/renderer-remotion/src/LayoutScene.tsx`
 - Test: `packages/core/tests/test_remotion_render.py`
 - Test: `packages/core/tests/test_manim_render.py`
 
@@ -2040,7 +2040,7 @@ import json
 import subprocess
 from pathlib import Path
 
-_REMOTION_PROJECT_DIR = Path(__file__).resolve().parents[6] / "apps/interview-demo/renderer-remotion"
+_REMOTION_PROJECT_DIR = Path(__file__).resolve().parents[6] / "apps/renderer-remotion"
 
 
 def render_remotion(narration_text: str, on_screen_text: str, duration_s: float, output_path: Path) -> None:
@@ -2113,7 +2113,7 @@ def render_manim(
 - [ ] **Step 5: Scaffold the minimal Remotion project**
 
 ```json
-// apps/interview-demo/renderer-remotion/package.json
+// apps/renderer-remotion/package.json
 {
   "name": "renderer-remotion",
   "version": "0.1.0",
@@ -2135,7 +2135,7 @@ def render_manim(
 ```
 
 ```json
-// apps/interview-demo/renderer-remotion/tsconfig.json
+// apps/renderer-remotion/tsconfig.json
 {
   "compilerOptions": {
     "target": "ES2018",
@@ -2150,7 +2150,7 @@ def render_manim(
 ```
 
 ```tsx
-// apps/interview-demo/renderer-remotion/src/LayoutScene.tsx
+// apps/renderer-remotion/src/LayoutScene.tsx
 import { AbsoluteFill, useVideoConfig, interpolate, useCurrentFrame } from "remotion";
 
 export type LayoutSceneProps = {
@@ -2187,7 +2187,7 @@ export const LayoutScene: React.FC<LayoutSceneProps> = ({ onScreenText }) => {
 ```
 
 ```tsx
-// apps/interview-demo/renderer-remotion/src/Root.tsx
+// apps/renderer-remotion/src/Root.tsx
 import { Composition } from "remotion";
 import { LayoutScene, calculateLayoutSceneMetadata, LayoutSceneProps } from "./LayoutScene";
 
@@ -2208,7 +2208,7 @@ export const RemotionRoot: React.FC = () => {
 ```
 
 ```ts
-// apps/interview-demo/renderer-remotion/src/index.ts
+// apps/renderer-remotion/src/index.ts
 import { registerRoot } from "remotion";
 import { RemotionRoot } from "./Root";
 
@@ -2224,7 +2224,7 @@ Expected: 3 passed
 
 Run:
 ```bash
-cd apps/interview-demo/renderer-remotion && npm install && npx tsc --noEmit
+cd apps/renderer-remotion && npm install && npx tsc --noEmit
 cd -
 ```
 Expected: no TypeScript errors.
@@ -2233,7 +2233,7 @@ Expected: no TypeScript errors.
 
 ```bash
 git add packages/core/src/spectacle_core/renderers packages/core/tests/test_remotion_render.py \
-        packages/core/tests/test_manim_render.py apps/interview-demo/renderer-remotion
+        packages/core/tests/test_manim_render.py apps/renderer-remotion
 git commit -m "feat: add Remotion layout scene and Manim equation-morph scene renderers"
 ```
 
@@ -2631,7 +2631,7 @@ git commit -m "feat(core): add collect_scenes fan-in and mux_final"
 
 **Interfaces:**
 - Consumes: every node function from Tasks 10-18, `DomainPack` (Task 4), `ArtifactStore`/`TTSProvider` (Tasks 3, 15), `OnArtifactFn` (Task 17).
-- Produces: `GraphState` (TypedDict), `build_graph(domain_pack, store, tts_provider, checkpointer, metadata_recorder: Callable[[str, str, str | None], None] | None = None, ...) -> CompiledGraph`. `metadata_recorder(content_hash, stage, scene_id)` is called after every artifact is written, decoupling `packages/core` from the Postgres-specific `ArtifactMetadataStore` in `apps/interview-demo/server` (core stays domain- and infra-agnostic; the FastAPI layer supplies the callback). Consumed by Task 21/22 (FastAPI `run_manager`, which supplies `metadata_recorder`) and Task 20 (kill/resume test, which passes `None`).
+- Produces: `GraphState` (TypedDict), `build_graph(domain_pack, store, tts_provider, checkpointer, metadata_recorder: Callable[[str, str, str | None], None] | None = None, ...) -> CompiledGraph`. `metadata_recorder(content_hash, stage, scene_id)` is called after every artifact is written, decoupling `packages/core` from the Postgres-specific `ArtifactMetadataStore` in `apps/server` (core stays domain- and infra-agnostic; the FastAPI layer supplies the callback). Consumed by Task 21/22 (FastAPI `run_manager`, which supplies `metadata_recorder`) and Task 20 (kill/resume test, which passes `None`).
 
 - [ ] **Step 1: Write the failing integration test**
 
@@ -3043,12 +3043,12 @@ git commit -m "test(core): prove kill-and-resume survives discarding the in-proc
 ### Task 21: FastAPI app skeleton — `POST /runs`, `GET /runs/:id`, `GET /runs/:id/artifacts`
 
 **Files:**
-- Create: `apps/interview-demo/server/src/server/db.py`
-- Create: `apps/interview-demo/server/src/server/run_manager.py`
-- Create: `apps/interview-demo/server/src/server/main.py`
-- Test: `apps/interview-demo/server/tests/test_db.py`
-- Test: `apps/interview-demo/server/tests/test_run_manager.py`
-- Test: `apps/interview-demo/server/tests/test_main.py`
+- Create: `apps/server/src/server/db.py`
+- Create: `apps/server/src/server/run_manager.py`
+- Create: `apps/server/src/server/main.py`
+- Test: `apps/server/tests/test_db.py`
+- Test: `apps/server/tests/test_run_manager.py`
+- Test: `apps/server/tests/test_main.py`
 
 **Interfaces:**
 - Consumes: `build_graph` (Task 19), `education_pack` (Task 8), `PostgresSaver`, `LocalFileArtifactStore` (Task 3).
@@ -3057,7 +3057,7 @@ git commit -m "test(core): prove kill-and-resume survives discarding the in-proc
 - [ ] **Step 1: Write the failing tests**
 
 ```python
-# apps/interview-demo/server/tests/test_db.py
+# apps/server/tests/test_db.py
 from server.db import ArtifactMetadataStore
 
 PG_CONN = "postgresql://spectacle:spectacle@localhost:5432/spectacle"
@@ -3073,7 +3073,7 @@ def test_insert_and_list_artifacts_for_a_run():
 ```
 
 ```python
-# apps/interview-demo/server/tests/test_run_manager.py
+# apps/server/tests/test_run_manager.py
 from unittest.mock import patch
 
 from server.run_manager import RunManager
@@ -3092,7 +3092,7 @@ def test_start_run_returns_a_run_id_and_kicks_off_a_background_thread(tmp_path):
 ```
 
 ```python
-# apps/interview-demo/server/tests/test_main.py
+# apps/server/tests/test_main.py
 from fastapi.testclient import TestClient
 
 from server.main import app
@@ -3120,13 +3120,13 @@ def test_get_run_status_404_for_unknown_run():
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pytest apps/interview-demo/server/tests -v`
+Run: `pytest apps/server/tests -v`
 Expected: FAIL with `ModuleNotFoundError: No module named 'server.db'` (and cascading import errors for the others)
 
 - [ ] **Step 3: Implement `db.py`**
 
 ```python
-# apps/interview-demo/server/src/server/db.py
+# apps/server/src/server/db.py
 import psycopg
 
 
@@ -3170,7 +3170,7 @@ class ArtifactMetadataStore:
 - [ ] **Step 4: Implement `run_manager.py`**
 
 ```python
-# apps/interview-demo/server/src/server/run_manager.py
+# apps/server/src/server/run_manager.py
 import threading
 import uuid
 from pathlib import Path
@@ -3223,7 +3223,7 @@ class RunManager:
 - [ ] **Step 5: Implement `main.py`**
 
 ```python
-# apps/interview-demo/server/src/server/main.py
+# apps/server/src/server/main.py
 import os
 from pathlib import Path
 
@@ -3266,21 +3266,21 @@ def get_run_artifacts(run_id: str) -> list[dict]:
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `pytest apps/interview-demo/server/tests -v -m "not integration"`
+Run: `pytest apps/server/tests -v -m "not integration"`
 Expected: 4 passed (`test_run_manager`, `test_main` — `test_db.py` needs live Postgres, mark it `@pytest.mark.integration` and rerun with `-m integration` separately to confirm it passes too)
 
 - [ ] **Step 7: Mark `test_db.py` as integration and re-run split**
 
 Add `import pytest` and `@pytest.mark.integration` above `test_insert_and_list_artifacts_for_a_run` in `test_db.py`.
 
-Run: `pytest apps/interview-demo/server/tests -v -m integration`
+Run: `pytest apps/server/tests -v -m integration`
 Expected: 1 passed (requires `docker compose up -d` from Task 19)
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add apps/interview-demo/server/src/server/db.py apps/interview-demo/server/src/server/run_manager.py \
-        apps/interview-demo/server/src/server/main.py apps/interview-demo/server/tests
+git add apps/server/src/server/db.py apps/server/src/server/run_manager.py \
+        apps/server/src/server/main.py apps/server/tests
 git commit -m "feat(server): add FastAPI skeleton with run start/status/artifacts endpoints"
 ```
 
@@ -3289,9 +3289,9 @@ git commit -m "feat(server): add FastAPI skeleton with run start/status/artifact
 ### Task 22: Simulate-crash + resume endpoints (claim #2 through the HTTP surface)
 
 **Files:**
-- Modify: `apps/interview-demo/server/src/server/main.py`
-- Modify: `apps/interview-demo/server/src/server/run_manager.py` (add `resume_run`)
-- Test: `apps/interview-demo/server/tests/test_main.py` (append)
+- Modify: `apps/server/src/server/main.py`
+- Modify: `apps/server/src/server/run_manager.py` (add `resume_run`)
+- Test: `apps/server/tests/test_main.py` (append)
 
 **Interfaces:**
 - Consumes: `RunManager` (Task 21).
@@ -3299,7 +3299,7 @@ git commit -m "feat(server): add FastAPI skeleton with run start/status/artifact
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `apps/interview-demo/server/tests/test_main.py`:
+Append to `apps/server/tests/test_main.py`:
 
 ```python
 def test_simulate_crash_calls_os_exit():
@@ -3319,13 +3319,13 @@ def test_resume_endpoint_delegates_to_run_manager():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pytest apps/interview-demo/server/tests/test_main.py -v`
+Run: `pytest apps/server/tests/test_main.py -v`
 Expected: FAIL — `/runs/{run_id}/simulate-crash` and `/runs/{run_id}/resume` don't exist yet (404s), and `RunManager.resume_run` doesn't exist.
 
 - [ ] **Step 3: Add `resume_run` to `run_manager.py`**
 
 ```python
-# apps/interview-demo/server/src/server/run_manager.py (append to RunManager)
+# apps/server/src/server/run_manager.py (append to RunManager)
     def resume_run(self, run_id: str, payload: dict) -> dict:
         from langgraph.types import Command
 
@@ -3349,7 +3349,7 @@ Expected: FAIL — `/runs/{run_id}/simulate-crash` and `/runs/{run_id}/resume` d
 `os` is already imported at the top of `main.py` from Task 21, so `os._exit` is patchable in tests as `server.main.os._exit` with no further import changes needed:
 
 ```python
-# apps/interview-demo/server/src/server/main.py (append)
+# apps/server/src/server/main.py (append)
 @app.post("/runs/{run_id}/simulate-crash")
 def post_simulate_crash(run_id: str) -> dict:
     os._exit(1)  # pragma: no cover -- unreachable in tests, os._exit is mocked
@@ -3362,7 +3362,7 @@ def post_resume(run_id: str, payload: dict) -> dict:
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `pytest apps/interview-demo/server/tests/test_main.py -v`
+Run: `pytest apps/server/tests/test_main.py -v`
 Expected: 6 passed
 
 - [ ] **Step 6: Manual end-to-end crash/resume demo (the real claim #2 proof, run once by hand)**
@@ -3370,7 +3370,7 @@ Expected: 6 passed
 ```bash
 docker compose up -d
 SPECTACLE_ARTIFACT_ROOT=./artifacts SPECTACLE_PG_CONN=postgresql://spectacle:spectacle@localhost:5432/spectacle \
-  uvicorn server.main:app --app-dir apps/interview-demo/server/src --port 8000 &
+  uvicorn server.main:app --app-dir apps/server/src --port 8000 &
 RUN_ID=$(curl -s -X POST localhost:8000/runs -H 'content-type: application/json' \
   -d '{"spec": {"learning_objective": "add fractions", "worked_example_expression": "3/4 + 1/8", "target_duration_minutes": 1, "audience": "6th grade"}, "run_mode": "accept_edits"}' \
   | python -c "import sys,json; print(json.load(sys.stdin)['run_id'])")
@@ -3383,8 +3383,8 @@ Expected: the final `resume` call returns `{"status": "paused", ...}` (it will p
 - [ ] **Step 7: Commit**
 
 ```bash
-git add apps/interview-demo/server/src/server/main.py apps/interview-demo/server/src/server/run_manager.py \
-        apps/interview-demo/server/tests/test_main.py
+git add apps/server/src/server/main.py apps/server/src/server/run_manager.py \
+        apps/server/tests/test_main.py
 git commit -m "feat(server): add simulate-crash and resume endpoints"
 ```
 
@@ -3394,9 +3394,9 @@ git commit -m "feat(server): add simulate-crash and resume endpoints"
 
 **Files:**
 - Create: `packages/core/src/spectacle_core/edit_assistant.py`
-- Modify: `apps/interview-demo/server/src/server/main.py`
+- Modify: `apps/server/src/server/main.py`
 - Test: `packages/core/tests/test_edit_assistant.py`
-- Test: `apps/interview-demo/server/tests/test_main.py` (append)
+- Test: `apps/server/tests/test_main.py` (append)
 
 **Interfaces:**
 - Consumes: none new beyond pydantic.
@@ -3432,7 +3432,7 @@ def test_propose_edit_raises_on_invalid_llm_output():
         propose_edit(Dummy, {"text": "original"}, "make it punchier", [], llm_fn=bad_llm)
 ```
 
-Append to `apps/interview-demo/server/tests/test_main.py`:
+Append to `apps/server/tests/test_main.py`:
 
 ```python
 def test_interrupt_chat_returns_proposed_artifact():
@@ -3457,7 +3457,7 @@ def test_interrupt_resume_delegates_to_run_manager_same_as_resume():
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pytest packages/core/tests/test_edit_assistant.py apps/interview-demo/server/tests/test_main.py -v`
+Run: `pytest packages/core/tests/test_edit_assistant.py apps/server/tests/test_main.py -v`
 Expected: FAIL — `spectacle_core.edit_assistant` doesn't exist; the two new routes 404.
 
 - [ ] **Step 3: Implement `edit_assistant.py`**
@@ -3499,7 +3499,7 @@ def propose_edit(
 - [ ] **Step 4: Add endpoints to `main.py`**
 
 ```python
-# apps/interview-demo/server/src/server/main.py (append)
+# apps/server/src/server/main.py (append)
 from spectacle_core.edit_assistant import propose_edit
 from spectacle_core.models import SceneGraph, Script
 
@@ -3527,14 +3527,14 @@ def post_interrupt_resume(run_id: str, payload: dict) -> dict:
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `pytest packages/core/tests/test_edit_assistant.py apps/interview-demo/server/tests/test_main.py -v`
+Run: `pytest packages/core/tests/test_edit_assistant.py apps/server/tests/test_main.py -v`
 Expected: 2 + 8 passed
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/core/src/spectacle_core/edit_assistant.py apps/interview-demo/server/src/server/main.py \
-        packages/core/tests/test_edit_assistant.py apps/interview-demo/server/tests/test_main.py
+git add packages/core/src/spectacle_core/edit_assistant.py apps/server/src/server/main.py \
+        packages/core/tests/test_edit_assistant.py apps/server/tests/test_main.py
 git commit -m "feat: add domain-agnostic chat edit-assistant and interrupt/chat+resume endpoints"
 ```
 
@@ -3543,12 +3543,12 @@ git commit -m "feat: add domain-agnostic chat edit-assistant and interrupt/chat+
 ### Task 24: Next.js scaffold — Start Run page with run-mode selector
 
 **Files:**
-- Create: `apps/interview-demo/web/package.json`
-- Create: `apps/interview-demo/web/tsconfig.json`
-- Create: `apps/interview-demo/web/next.config.js`
-- Create: `apps/interview-demo/web/app/layout.tsx`
-- Create: `apps/interview-demo/web/app/page.tsx`
-- Create: `apps/interview-demo/web/lib/api.ts`
+- Create: `apps/web/package.json`
+- Create: `apps/web/tsconfig.json`
+- Create: `apps/web/next.config.js`
+- Create: `apps/web/app/layout.tsx`
+- Create: `apps/web/app/page.tsx`
+- Create: `apps/web/lib/api.ts`
 
 **Interfaces:**
 - Consumes: `POST /runs` (Task 21).
@@ -3606,7 +3606,7 @@ module.exports = {};
 - [ ] **Step 3: Create `lib/api.ts`**
 
 ```ts
-// apps/interview-demo/web/lib/api.ts
+// apps/web/lib/api.ts
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
 export type RunMode = "accept_edits" | "auto";
@@ -3637,7 +3637,7 @@ export async function getRunArtifacts(runId: string): Promise<Array<Record<strin
 - [ ] **Step 4: Create `app/layout.tsx` and `app/page.tsx` (Start Run form)**
 
 ```tsx
-// apps/interview-demo/web/app/layout.tsx
+// apps/web/app/layout.tsx
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
@@ -3648,7 +3648,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 ```
 
 ```tsx
-// apps/interview-demo/web/app/page.tsx
+// apps/web/app/page.tsx
 "use client";
 
 import { useState } from "react";
@@ -3721,7 +3721,7 @@ export default function StartRunPage() {
 
 Run:
 ```bash
-cd apps/interview-demo/web && npm install && npx next build
+cd apps/web && npm install && npx next build
 cd -
 ```
 Expected: build succeeds (route `/` present).
@@ -3729,7 +3729,7 @@ Expected: build succeeds (route `/` present).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/interview-demo/web
+git add apps/web
 git commit -m "feat(web): scaffold Next.js app with Start Run page and run-mode selector"
 ```
 
@@ -3738,8 +3738,8 @@ git commit -m "feat(web): scaffold Next.js app with Start Run page and run-mode 
 ### Task 25: Progressive artifact tree view
 
 **Files:**
-- Create: `apps/interview-demo/web/app/runs/[id]/page.tsx`
-- Create: `apps/interview-demo/web/components/ArtifactTree.tsx`
+- Create: `apps/web/app/runs/[id]/page.tsx`
+- Create: `apps/web/components/ArtifactTree.tsx`
 
 **Interfaces:**
 - Consumes: `getRun`, `getRunArtifacts` (Task 24's `lib/api.ts`).
@@ -3748,7 +3748,7 @@ git commit -m "feat(web): scaffold Next.js app with Start Run page and run-mode 
 - [ ] **Step 1: Create `components/ArtifactTree.tsx`**
 
 ```tsx
-// apps/interview-demo/web/components/ArtifactTree.tsx
+// apps/web/components/ArtifactTree.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -3801,7 +3801,7 @@ export function ArtifactTree({ runId }: { runId: string }) {
 - [ ] **Step 2: Create `app/runs/[id]/page.tsx`**
 
 ```tsx
-// apps/interview-demo/web/app/runs/[id]/page.tsx
+// apps/web/app/runs/[id]/page.tsx
 import { ArtifactTree } from "@/components/ArtifactTree";
 
 export default function RunPage({ params }: { params: { id: string } }) {
@@ -3818,7 +3818,7 @@ export default function RunPage({ params }: { params: { id: string } }) {
 
 Run:
 ```bash
-cd apps/interview-demo/web && npx next build
+cd apps/web && npx next build
 cd -
 ```
 Expected: build succeeds, route `/runs/[id]` present.
@@ -3826,7 +3826,7 @@ Expected: build succeeds, route `/runs/[id]` present.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add apps/interview-demo/web/app/runs apps/interview-demo/web/components/ArtifactTree.tsx
+git add apps/web/app/runs apps/web/components/ArtifactTree.tsx
 git commit -m "feat(web): add progressive artifact tree view with per-scene previews"
 ```
 
@@ -3835,9 +3835,9 @@ git commit -m "feat(web): add progressive artifact tree view with per-scene prev
 ### Task 26: Review/edit panel (chat + JSON) and Simulate Crash / Resume buttons
 
 **Files:**
-- Create: `apps/interview-demo/web/components/ReviewPanel.tsx`
-- Modify: `apps/interview-demo/web/lib/api.ts` (add `postInterruptChat`, `postInterruptResume`, `simulateCrash`)
-- Modify: `apps/interview-demo/web/app/runs/[id]/page.tsx` (mount `ReviewPanel` and crash/resume buttons)
+- Create: `apps/web/components/ReviewPanel.tsx`
+- Modify: `apps/web/lib/api.ts` (add `postInterruptChat`, `postInterruptResume`, `simulateCrash`)
+- Modify: `apps/web/app/runs/[id]/page.tsx` (mount `ReviewPanel` and crash/resume buttons)
 
 **Interfaces:**
 - Consumes: `POST /runs/:id/interrupt/chat`, `POST /runs/:id/interrupt/resume`, `POST /runs/:id/simulate-crash`, `POST /runs/:id/resume` (Tasks 22-23).
@@ -3845,7 +3845,7 @@ git commit -m "feat(web): add progressive artifact tree view with per-scene prev
 - [ ] **Step 1: Extend `lib/api.ts`**
 
 ```ts
-// apps/interview-demo/web/lib/api.ts (append)
+// apps/web/lib/api.ts (append)
 export async function postInterruptChat(runId: string, artifactType: string, currentArtifact: Record<string, unknown>, message: string, history: Array<Record<string, unknown>>) {
   const res = await fetch(`${API_BASE}/runs/${runId}/interrupt/chat`, {
     method: "POST",
@@ -3884,7 +3884,7 @@ export async function resumeRun(runId: string) {
 - [ ] **Step 2: Create `components/ReviewPanel.tsx`**
 
 ```tsx
-// apps/interview-demo/web/components/ReviewPanel.tsx
+// apps/web/components/ReviewPanel.tsx
 "use client";
 
 import { useState } from "react";
@@ -3942,7 +3942,7 @@ export function ReviewPanel({
 - [ ] **Step 3: Mount the review panel and crash/resume buttons on the run page**
 
 ```tsx
-// apps/interview-demo/web/app/runs/[id]/page.tsx
+// apps/web/app/runs/[id]/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -3982,7 +3982,7 @@ export default function RunPage({ params }: { params: { id: string } }) {
 
 Run:
 ```bash
-cd apps/interview-demo/web && npx next build
+cd apps/web && npx next build
 cd -
 ```
 Expected: build succeeds.
@@ -3990,8 +3990,8 @@ Expected: build succeeds.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/interview-demo/web/components/ReviewPanel.tsx apps/interview-demo/web/lib/api.ts \
-        apps/interview-demo/web/app/runs/\[id\]/page.tsx
+git add apps/web/components/ReviewPanel.tsx apps/web/lib/api.ts \
+        apps/web/app/runs/\[id\]/page.tsx
 git commit -m "feat(web): add chat+JSON review panel and simulate-crash/resume controls"
 ```
 
@@ -4013,7 +4013,7 @@ Change:
 ## Stack
 - Python: LangGraph, sympy, Manim, ffmpeg-python
 - TypeScript/Node: Remotion
-- Frontend: Next.js (apps/interview-demo)
+- Frontend: Next.js (apps/)
 - Local DB: SQLite (checkpointer + artifact metadata)
 ```
 to:
@@ -4021,7 +4021,7 @@ to:
 ## Stack
 - Python: LangGraph, sympy, Manim, ffmpeg (via subprocess)
 - TypeScript/Node: Remotion
-- Frontend: Next.js (apps/interview-demo)
+- Frontend: Next.js (apps/)
 - Local DB: Postgres via docker-compose (checkpointer + artifact metadata)
 ```
 

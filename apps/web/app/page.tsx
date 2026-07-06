@@ -1,4 +1,3 @@
-// apps/interview-demo/web/app/page.tsx
 "use client";
 
 import { useState } from "react";

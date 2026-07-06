@@ -42,7 +42,7 @@ The six claims this project must prove, concretely and observably:
 - `packages/core/` — genre-agnostic engine. No domain-specific imports.
 - `domains/education/` — spec schema, structure agent, sympy verification
   gate, safety profile.
-- `apps/interview-demo/` — Next.js UI + FastAPI backend service wiring core
+- `apps//` — Next.js UI + FastAPI backend service wiring core
   to the education domain pack.
 - `artifacts/` — gitignored, content-addressed local outputs.
 
@@ -220,7 +220,7 @@ load_spec
 
 ## Backend process
 
-- `apps/interview-demo/server/` — a FastAPI service importing
+- `apps/server/` — a FastAPI service importing
   `packages.core` (graph builder, checkpointer, artifact store) and
   `domains.education` (the pack instance), building the compiled graph once
   at startup.
@@ -297,7 +297,7 @@ managed VM:
   (audio, video) pair is generated to match by construction — final mux is
   a plain concatenation, eliminating drift risk entirely.
 
-## Next.js app (`apps/interview-demo`)
+## Next.js app (`apps/`)
 
 Modeled loosely on the Claude Code CLI's own UX: a chat interface sitting
 alongside an artifact/state view, plus a run-mode toggle analogous to

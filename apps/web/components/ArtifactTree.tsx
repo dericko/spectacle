@@ -1,4 +1,3 @@
-// apps/interview-demo/web/components/ArtifactTree.tsx
 "use client";
 
 import { useEffect, useState } from "react";

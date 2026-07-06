@@ -2,7 +2,7 @@ import json
 import subprocess
 from pathlib import Path
 
-_REMOTION_PROJECT_DIR = Path(__file__).resolve().parents[5] / "apps/interview-demo/renderer-remotion"
+_REMOTION_PROJECT_DIR = Path(__file__).resolve().parents[5] / "apps/renderer-remotion"
 
 
 def render_remotion(narration_text: str, on_screen_text: str, duration_s: float, output_path: Path) -> None:

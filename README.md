@@ -84,13 +84,13 @@ The education pack knows about fractions, algebra, and pedagogy. It:
 - Fills expressions into worked-example and guided-practice stubs via LLM calls
 - Runs `sympy_equivalence_gate` to verify the script's stated answer against the expression; catches LLM math errors before any frames are rendered
 
-### apps/interview-demo — the runnable app
+### apps/ — the runnable app
 
 Three pieces:
 
-- **FastAPI server** (`apps/interview-demo/server/`) — `POST /runs`, `GET /runs/:id`, `GET /runs/:id/artifacts`, interrupt chat/resume, simulate-crash, resume endpoints
-- **Next.js frontend** (`apps/interview-demo/web/`) — Start Run page, live artifact tree view (polling every 2s), chat+JSON review panel, crash/resume controls
-- **Remotion renderer** (`apps/interview-demo/renderer-remotion/`) — React compositions for layout scenes
+- **FastAPI server** (`apps/server/`) — `POST /runs`, `GET /runs/:id`, `GET /runs/:id/artifacts`, interrupt chat/resume, simulate-crash, resume endpoints
+- **Next.js frontend** (`apps/web/`) — Start Run page, live artifact tree view (polling every 2s), chat+JSON review panel, crash/resume controls
+- **Remotion renderer** (`apps/renderer-remotion/`) — React compositions for layout scenes
 
 ---
 
@@ -111,7 +111,7 @@ Three pieces:
 git clone https://github.com/dericko/spectacle
 cd spectacle
 python -m venv .venv && source .venv/bin/activate
-pip install -e packages/core -e domains/education -e apps/interview-demo/server pytest
+pip install -e packages/core -e domains/education -e apps/server pytest
 ```
 
 ### 2. Start Postgres
@@ -125,8 +125,8 @@ Starts Postgres on port 5432 with credentials `spectacle / spectacle / spectacle
 ### 3. Install frontend dependencies
 
 ```bash
-cd apps/interview-demo/web && npm install && cd -
-cd apps/interview-demo/renderer-remotion && npm install && cd -
+cd apps/web && npm install && cd -
+cd apps/renderer-remotion && npm install && cd -
 ```
 
 ### 4. Wire up your LLM client
@@ -145,11 +145,11 @@ Point these at any LLM API. The test suite injects fakes, so `pytest` passes wit
 
 ```bash
 # Terminal 1 — API server
-cd apps/interview-demo/server
+cd apps/server
 uvicorn server.main:app --reload
 
 # Terminal 2 — Next.js dev server
-cd apps/interview-demo/web
+cd apps/web
 npm run dev
 ```
 
@@ -271,7 +271,7 @@ my_pack = _MyPack()
 
 ### Wiring it into the app
 
-Pass your pack instance to `build_graph()` in `apps/interview-demo/server/src/server/run_manager.py`:
+Pass your pack instance to `build_graph()` in `apps/server/src/server/run_manager.py`:
 
 ```python
 from my_domain import my_pack
@@ -334,7 +334,7 @@ spectacle/
 │       ├── verification.py            # sympy_equivalence_gate()
 │       └── safety.py                  # education_safety_profile
 │
-├── apps/interview-demo/
+├── apps//
 │   ├── server/                        # FastAPI server
 │   ├── web/                           # Next.js frontend
 │   └── renderer-remotion/             # Remotion compositions for layout scenes

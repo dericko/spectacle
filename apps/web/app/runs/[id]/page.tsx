@@ -1,4 +1,3 @@
-// apps/interview-demo/web/app/runs/[id]/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";

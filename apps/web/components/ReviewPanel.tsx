@@ -1,4 +1,3 @@
-// apps/interview-demo/web/components/ReviewPanel.tsx
 "use client";
 
 import { useState } from "react";

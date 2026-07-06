@@ -10,7 +10,7 @@ Manim (equation-morphing scenes), muxed with FFmpeg.
 - `packages/core/` — genre-agnostic engine. No domain-specific imports.
 - `domains/education/` — education domain pack: spec schema, structure agent,
   sympy verification gate, safety profile.
-- `apps/interview-demo/` — Next.js app wiring UI shell to education domain pack.
+- `apps//` — Next.js app wiring UI shell to education domain pack.
 - `artifacts/` — gitignored local render outputs (content-addressed by hash).
 
 ## Key architectural rules
@@ -36,7 +36,7 @@ Manim (equation-morphing scenes), muxed with FFmpeg.
 ## Stack
 - Python: LangGraph, sympy, Manim, ffmpeg (via subprocess)
 - TypeScript/Node: Remotion
-- Frontend: Next.js (apps/interview-demo)
+- Frontend: Next.js (apps/)
 - Local DB: Postgres via docker-compose (checkpointer + artifact metadata)
 
 ## What not to do
