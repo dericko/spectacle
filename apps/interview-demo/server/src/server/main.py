@@ -36,3 +36,14 @@ def get_run(run_id: str) -> dict:
 @app.get("/runs/{run_id}/artifacts")
 def get_run_artifacts(run_id: str) -> list[dict]:
     return run_manager.list_artifacts(run_id)
+
+
+@app.post("/runs/{run_id}/simulate-crash")
+def post_simulate_crash(run_id: str) -> dict:
+    os._exit(1)  # pragma: no cover -- unreachable in tests, os._exit is mocked
+    return {}  # pragma: no cover -- unreachable in normal operation
+
+
+@app.post("/runs/{run_id}/resume")
+def post_resume(run_id: str, payload: dict) -> dict:
+    return run_manager.resume_run(run_id, payload)
