@@ -5,6 +5,8 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from server.run_manager import RunManager
+from spectacle_core.edit_assistant import propose_edit
+from spectacle_core.models import SceneGraph, Script
 
 app = FastAPI()
 
@@ -48,9 +50,6 @@ def post_simulate_crash(run_id: str) -> dict:
 def post_resume(run_id: str, payload: dict) -> dict:
     return run_manager.resume_run(run_id, payload)
 
-
-from spectacle_core.edit_assistant import propose_edit
-from spectacle_core.models import SceneGraph, Script
 
 _ARTIFACT_TYPES = {"Script": Script, "SceneGraph": SceneGraph}
 
