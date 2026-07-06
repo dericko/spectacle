@@ -24,11 +24,20 @@ Manim (equation-morphing scenes), muxed with FFmpeg.
 4. Renderer routing is decided by the scene planner agent and is
    human-overridable in the review UI.
 
+## Extension seams (for the later GCP-deployment plan)
+- `ArtifactStore` (packages/core/src/spectacle_core/artifacts.py) has one
+  local-filesystem implementation today; a GCS-backed implementation is a
+  drop-in second implementation of the same protocol, not a rewrite.
+- `render_scene` (packages/core/src/spectacle_core/nodes/render_scene.py)
+  dispatches in-process today; a Cloud Tasks-backed dispatch is meant to
+  reuse the same `interrupt()`/`Command(resume=...)` primitive the human
+  review steps already use, machine-triggered instead of human-triggered.
+
 ## Stack
-- Python: LangGraph, sympy, Manim, ffmpeg-python
+- Python: LangGraph, sympy, Manim, ffmpeg (via subprocess)
 - TypeScript/Node: Remotion
 - Frontend: Next.js (apps/interview-demo)
-- Local DB: SQLite (checkpointer + artifact metadata)
+- Local DB: Postgres via docker-compose (checkpointer + artifact metadata)
 
 ## What not to do
 - Don't add domain-specific branches inside packages/core/
