@@ -47,3 +47,28 @@ def post_simulate_crash(run_id: str) -> dict:
 @app.post("/runs/{run_id}/resume")
 def post_resume(run_id: str, payload: dict) -> dict:
     return run_manager.resume_run(run_id, payload)
+
+
+from spectacle_core.edit_assistant import propose_edit
+from spectacle_core.models import SceneGraph, Script
+
+_ARTIFACT_TYPES = {"Script": Script, "SceneGraph": SceneGraph}
+
+
+class ChatEditRequest(BaseModel):
+    artifact_type: str
+    current_artifact: dict
+    message: str
+    history: list[dict] = []
+
+
+@app.post("/runs/{run_id}/interrupt/chat")
+def post_interrupt_chat(run_id: str, req: ChatEditRequest) -> dict:
+    artifact_cls = _ARTIFACT_TYPES[req.artifact_type]
+    proposed = propose_edit(artifact_cls, req.current_artifact, req.message, req.history)
+    return {"proposed_artifact": proposed}
+
+
+@app.post("/runs/{run_id}/interrupt/resume")
+def post_interrupt_resume(run_id: str, payload: dict) -> dict:
+    return run_manager.resume_run(run_id, payload)

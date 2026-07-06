@@ -36,3 +36,23 @@ def test_resume_endpoint_delegates_to_run_manager():
         resp = client.post("/runs/run-1/resume", json={"action": "approve"})
     mock_resume.assert_called_once_with("run-1", {"action": "approve"})
     assert resp.json() == {"status": "done"}
+
+
+def test_interrupt_chat_returns_proposed_artifact():
+    with __import__("unittest.mock", fromlist=["patch"]).patch(
+        "server.main.propose_edit", return_value={"text": "edited"}
+    ):
+        resp = client.post("/runs/run-1/interrupt/chat", json={
+            "artifact_type": "Script", "current_artifact": {"text": "original"},
+            "message": "make it punchier", "history": [],
+        })
+    assert resp.json() == {"proposed_artifact": {"text": "edited"}}
+
+
+def test_interrupt_resume_delegates_to_run_manager_same_as_resume():
+    with __import__("unittest.mock", fromlist=["patch"]).patch(
+        "server.main.run_manager.resume_run", return_value={"status": "done"}
+    ) as mock_resume:
+        resp = client.post("/runs/run-1/interrupt/resume", json={"action": "approve"})
+    mock_resume.assert_called_once_with("run-1", {"action": "approve"})
+    assert resp.json() == {"status": "done"}
