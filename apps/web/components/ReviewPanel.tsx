@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { postInterruptChat, postInterruptResume } from "@/lib/api";
+import { ArtifactPreview } from "@/components/ArtifactPreview";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -148,6 +149,32 @@ export function ReviewPanel({
         >
           {approving ? "Approving…" : "Approve"}
         </button>
+      </div>
+
+      {/* Artifact preview */}
+      <div
+        style={{
+          padding: "16px 20px",
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
+        <p
+          style={{
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            color: "var(--text-dim)",
+            fontFamily: "var(--font-mono), monospace",
+            marginBottom: 10,
+          }}
+        >
+          Preview
+        </p>
+        <ArtifactPreview
+          stage={artifactType === "Script" ? "script" : "scene_graph"}
+          data={artifact}
+        />
       </div>
 
       {/* Tabs */}

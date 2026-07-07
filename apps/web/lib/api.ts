@@ -30,6 +30,12 @@ export async function getRunArtifacts(runId: string): Promise<Array<Record<strin
   return res.json();
 }
 
+export async function getArtifact(contentHash: string): Promise<Record<string, unknown>> {
+  const res = await fetch(`${API_BASE}/artifacts/${contentHash}`);
+  if (!res.ok) throw new Error(`get artifact failed: ${res.status}`);
+  return res.json();
+}
+
 export async function postInterruptChat(runId: string, artifactType: string, currentArtifact: Record<string, unknown>, message: string, history: Array<Record<string, unknown>>) {
   const res = await fetch(`${API_BASE}/runs/${runId}/interrupt/chat`, {
     method: "POST",
