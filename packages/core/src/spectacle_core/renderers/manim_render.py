@@ -1,10 +1,25 @@
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Literal
 
 _SCENE_FILE = Path(__file__).with_name("manim_scene.py")
+
+
+def _render_ffmpeg_placeholder(duration_s: float, output_path: Path) -> None:
+    """Fallback when manim is not installed: solid-color MP4 of the right duration."""
+    subprocess.run(
+        [
+            "ffmpeg", "-y",
+            "-f", "lavfi", "-i", f"color=c=0x1a1a2e:size=1920x1080:rate=24",
+            "-t", str(duration_s),
+            str(output_path),
+        ],
+        check=True,
+        capture_output=True,
+    )
 
 
 def render_manim(
@@ -14,6 +29,10 @@ def render_manim(
     output_path: Path,
     quality: Literal["preview", "final"],
 ) -> None:
+    if not shutil.which("manim"):
+        _render_ffmpeg_placeholder(duration_s, output_path)
+        return
+
     env = os.environ.copy()
     env["SPECTACLE_SCENE_PARAMS"] = json.dumps({
         "expression": expression,

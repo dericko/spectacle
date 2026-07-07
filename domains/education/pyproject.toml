@@ -5,6 +5,7 @@ requires-python = ">=3.11"
 dependencies = [
     "spectacle-core",
     "sympy>=1.12",
+    "anthropic>=0.40",
 ]
 
 [build-system]
