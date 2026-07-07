@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from server.run_manager import RunManager
@@ -9,6 +10,12 @@ from spectacle_core.edit_assistant import propose_edit
 from spectacle_core.models import SceneGraph, Script
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 run_manager = RunManager(
     artifact_root=Path(os.environ.get("SPECTACLE_ARTIFACT_ROOT", "./artifacts")),
