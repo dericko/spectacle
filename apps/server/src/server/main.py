@@ -21,7 +21,7 @@ app.add_middleware(
 )
 
 run_manager = RunManager(
-    artifact_root=Path(os.environ.get("SPECTACLE_ARTIFACT_ROOT", "./artifacts")),
+    artifact_root=Path(os.environ.get("SPECTACLE_ARTIFACT_ROOT", "./artifacts")).resolve(),
     pg_conn=os.environ.get("SPECTACLE_PG_CONN", "postgresql://spectacle:spectacle@localhost:5433/spectacle"),
 )
 
