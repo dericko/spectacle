@@ -18,7 +18,7 @@ export default function RunPage({ params }: { params: { id: string } }) {
   }, [params.id]);
 
   const result = status?.result as Record<string, unknown> | undefined;
-  const interrupted = result?.__interrupt__;
+  const interrupted = Boolean(result?.__interrupt__);
   const shortId = params.id.length > 8 ? `${params.id.slice(0, 8)}…` : params.id;
 
   return (
