@@ -38,6 +38,7 @@ export function Nav({ crumb }: NavProps) {
           </>
         )}
         <div className="nav-spacer" />
+        <Link href="/library" className="btn btn-ghost">Library</Link>
         <button className="btn btn-ghost" onClick={toggleTheme} aria-label="Toggle theme">
           {theme === "light" ? "Dark" : "Light"}
         </button>

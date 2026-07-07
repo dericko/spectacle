@@ -2,6 +2,12 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
 export type RunMode = "accept_edits" | "auto";
 
+export async function listRuns(): Promise<Array<{ run_id: string; name: string; status: string; created_at: string }>> {
+  const res = await fetch(`${API_BASE}/runs`);
+  if (!res.ok) throw new Error(`list runs failed: ${res.status}`);
+  return res.json();
+}
+
 export async function startRun(spec: Record<string, unknown>, runMode: RunMode): Promise<{ run_id: string }> {
   const res = await fetch(`${API_BASE}/runs`, {
     method: "POST",
