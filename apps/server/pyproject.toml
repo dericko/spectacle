@@ -16,3 +16,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.uv.sources]
+spectacle-core = { workspace = true }
+spectacle-education = { workspace = true }
