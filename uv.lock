@@ -1047,6 +1047,7 @@ source = { editable = "apps/server" }
 dependencies = [
     { name = "fastapi" },
     { name = "psycopg", extra = ["binary"] },
+    { name = "python-dotenv" },
     { name = "spectacle-core" },
     { name = "spectacle-education" },
     { name = "uvicorn", extra = ["standard"] },
@@ -1056,6 +1057,7 @@ dependencies = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.110" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.1" },
+    { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "spectacle-core", editable = "packages/core" },
     { name = "spectacle-education", editable = "domains/education" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.29" },
