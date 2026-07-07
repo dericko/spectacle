@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: spectacle
       POSTGRES_PASSWORD: spectacle
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - spectacle_pgdata:/var/lib/postgresql/data
 

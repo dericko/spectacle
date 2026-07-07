@@ -9,7 +9,7 @@ from spectacle_core.graph import build_graph
 from spectacle_core.nodes.script_agent import ScriptLLMResponse
 from spectacle_education import education_pack
 
-PG_CONN = "postgresql://spectacle:spectacle@localhost:5432/spectacle"
+PG_CONN = "postgresql://spectacle:spectacle@localhost:5433/spectacle"
 
 
 def _fake_llm(stub):

@@ -2,7 +2,7 @@ import pytest
 
 from server.db import ArtifactMetadataStore
 
-PG_CONN = "postgresql://spectacle:spectacle@localhost:5432/spectacle"
+PG_CONN = "postgresql://spectacle:spectacle@localhost:5433/spectacle"
 
 
 @pytest.mark.integration
