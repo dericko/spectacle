@@ -1,0 +1,11 @@
+[tool.uv.workspace]
+members = [
+    "packages/core",
+    "domains/education",
+    "apps/server",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
