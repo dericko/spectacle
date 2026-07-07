@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from server.run_manager import RunManager
+from spectacle_core.artifacts import LocalFileArtifactStore
 from spectacle_core.edit_assistant import propose_edit
 from spectacle_core.models import SceneGraph, Script
 
@@ -53,6 +54,14 @@ def get_run(run_id: str) -> dict:
 @app.get("/runs/{run_id}/artifacts")
 def get_run_artifacts(run_id: str) -> list[dict]:
     return run_manager.list_artifacts(run_id)
+
+
+@app.get("/artifacts/{content_hash}")
+def get_artifact(content_hash: str) -> dict:
+    store = LocalFileArtifactStore(run_manager.artifact_root)
+    if not store.exists(content_hash):
+        raise HTTPException(status_code=404, detail="artifact not found")
+    return store.get_json(content_hash)
 
 
 @app.post("/runs/{run_id}/simulate-crash")

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getRunArtifacts } from "@/lib/api";
+import { getRunArtifacts, getArtifact } from "@/lib/api";
+import { ArtifactPreview } from "@/components/ArtifactPreview";
 
 type ArtifactRow = {
   content_hash: string;
@@ -18,8 +19,89 @@ const PIPELINE_STAGES = [
   { key: "mux", label: "mux", desc: "FFmpeg assembly" },
 ];
 
+function ExpandedArtifact({
+  row,
+  onClose,
+}: {
+  row: ArtifactRow;
+  onClose: () => void;
+}) {
+  const [data, setData] = useState<Record<string, unknown> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setData(null);
+    setError(null);
+    getArtifact(row.content_hash)
+      .then(setData)
+      .catch((e) => setError(e.message));
+  }, [row.content_hash]);
+
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border-bright)",
+        borderTop: "none",
+        borderRadius: "0 0 var(--radius) var(--radius)",
+        padding: "16px 16px 14px",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 12,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            color: "var(--text-dim)",
+            fontFamily: "var(--font-mono), monospace",
+          }}
+        >
+          Preview
+        </span>
+        <button
+          onClick={onClose}
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color: "var(--text-dim)",
+            fontSize: 16,
+            lineHeight: 1,
+            padding: "0 2px",
+          }}
+          aria-label="Close"
+        >
+          ×
+        </button>
+      </div>
+
+      {error && (
+        <div className="alert alert-error" role="alert">
+          {error}
+        </div>
+      )}
+
+      {!data && !error && (
+        <div style={{ color: "var(--text-dim)", fontSize: 13 }}>Loading…</div>
+      )}
+
+      {data && <ArtifactPreview stage={row.stage} data={data} />}
+    </div>
+  );
+}
+
 export function ArtifactTree({ runId }: { runId: string }) {
   const [rows, setRows] = useState<ArtifactRow[]>([]);
+  const [selectedHash, setSelectedHash] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,6 +133,10 @@ export function ArtifactTree({ runId }: { runId: string }) {
   const nonVideoRows = rows.filter(
     (r) => r.stage !== "scene_preview" && r.stage !== "scene_final"
   );
+
+  function toggleRow(hash: string) {
+    setSelectedHash((prev) => (prev === hash ? null : hash));
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 36 }}>
@@ -149,36 +235,86 @@ export function ArtifactTree({ runId }: { runId: string }) {
             Artifacts
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            {nonVideoRows.map((row) => (
-              <div
-                key={row.content_hash}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "8px 12px",
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius)",
-                }}
-              >
-                <span className="dot" />
-                <span
-                  className="mono"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  {row.stage}
-                </span>
-                {row.scene_id && (
-                  <span style={{ color: "var(--text-dim)", fontSize: 11 }}>
-                    scene {row.scene_id}
-                  </span>
-                )}
-                <span className="hash" style={{ marginLeft: "auto" }}>
-                  {row.content_hash.slice(0, 12)}
-                </span>
-              </div>
-            ))}
+            {nonVideoRows.map((row) => {
+              const isSelected = selectedHash === row.content_hash;
+              return (
+                <div key={row.content_hash}>
+                  {/* Row header — clickable */}
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => toggleRow(row.content_hash)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") toggleRow(row.content_hash);
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "8px 12px",
+                      background: isSelected
+                        ? "var(--surface-2)"
+                        : "var(--surface)",
+                      border: "1px solid var(--border)",
+                      borderBottom: isSelected
+                        ? "1px solid var(--border-bright)"
+                        : "1px solid var(--border)",
+                      borderRadius: isSelected
+                        ? "var(--radius) var(--radius) 0 0"
+                        : "var(--radius)",
+                      cursor: "pointer",
+                      userSelect: "none",
+                      transition: "background 0.1s",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isSelected)
+                        (e.currentTarget as HTMLElement).style.background =
+                          "var(--surface-2)";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSelected)
+                        (e.currentTarget as HTMLElement).style.background =
+                          "var(--surface)";
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 10,
+                        color: "var(--text-dim)",
+                        transition: "transform 0.15s",
+                        display: "inline-block",
+                        transform: isSelected ? "rotate(90deg)" : "rotate(0deg)",
+                      }}
+                    >
+                      ▶
+                    </span>
+                    <span className="dot" />
+                    <span
+                      className="mono"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      {row.stage}
+                    </span>
+                    {row.scene_id && (
+                      <span style={{ color: "var(--text-dim)", fontSize: 11 }}>
+                        scene {row.scene_id}
+                      </span>
+                    )}
+                    <span className="hash" style={{ marginLeft: "auto" }}>
+                      {row.content_hash.slice(0, 12)}
+                    </span>
+                  </div>
+
+                  {/* Expanded preview */}
+                  {isSelected && (
+                    <ExpandedArtifact
+                      row={row}
+                      onClose={() => setSelectedHash(null)}
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
