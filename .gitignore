@@ -22,3 +22,5 @@ artifacts/
 
 # OS
 .DS_Store
+
+.claude/
