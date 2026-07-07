@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { startRun, RunMode } from "@/lib/api";
 import { Nav } from "@/components/Nav";
 
@@ -66,10 +67,13 @@ export default function StartRunPage() {
             >
               Turn a spec into a video.
             </h1>
-            <p style={{ color: "var(--text-muted)", fontSize: 15, maxWidth: 520, lineHeight: 1.6 }}>
+            <p style={{ color: "var(--text-muted)", fontSize: 15, maxWidth: 520, lineHeight: 1.6, marginBottom: 16 }}>
               Spectacle orchestrates structure, script, rendering, and mux through
               a LangGraph pipeline — and hands you an MP4.
             </p>
+            <Link href="/library" style={{ fontSize: 13, color: "var(--teal)", textDecoration: "none" }}>
+              View past runs →
+            </Link>
           </div>
 
           {/* Two column */}

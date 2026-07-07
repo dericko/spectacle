@@ -18,17 +18,19 @@ class RunManager:
         self.pg_conn = pg_conn
         self.metadata = ArtifactMetadataStore(pg_conn)
         self._statuses: dict[str, dict] = {}
+        self.metadata.setup()
 
     def start_run(self, spec: dict, run_mode: Literal["accept_edits", "auto"]) -> str:
         run_id = str(uuid.uuid4())
         self._statuses[run_id] = {"status": "running"}
+        name = spec.get("learning_objective") or run_id[:8]
+        self.metadata.create_run(run_id, name)
         thread = threading.Thread(target=self._execute_run, args=(run_id, spec, run_mode), daemon=True)
         thread.start()
         return run_id
 
     def _execute_run(self, run_id: str, spec: dict, run_mode: str) -> None:
         try:
-            self.metadata.setup()
             store = LocalFileArtifactStore(self.artifact_root)
             with PostgresSaver.from_conn_string(self.pg_conn) as checkpointer:
                 checkpointer.setup()
@@ -39,12 +41,24 @@ class RunManager:
                 )
                 config = {"configurable": {"thread_id": run_id}}
                 result = graph.invoke({"spec": spec, "run_mode": run_mode}, config=config)
-                self._statuses[run_id] = {"status": "paused" if "__interrupt__" in result else "done", "result": result}
+                final_status = "paused" if "__interrupt__" in result else "done"
+                self._statuses[run_id] = {"status": final_status, "result": result}
+                self.metadata.update_run_status(run_id, final_status)
         except Exception as e:
             self._statuses[run_id] = {"status": "error", "detail": str(e)}
+            self.metadata.update_run_status(run_id, "error")
 
     def get_status(self, run_id: str) -> dict | None:
         return self._statuses.get(run_id)
+
+    def list_runs(self) -> list[dict]:
+        rows = self.metadata.list_runs()
+        for row in rows:
+            if row["run_id"] in self._statuses:
+                row["status"] = self._statuses[row["run_id"]]["status"]
+            if hasattr(row["created_at"], "isoformat"):
+                row["created_at"] = row["created_at"].isoformat()
+        return rows
 
     def list_artifacts(self, run_id: str) -> list[dict]:
         return self.metadata.list_for_run(run_id)
@@ -62,6 +76,8 @@ class RunManager:
             )
             config = {"configurable": {"thread_id": run_id}}
             result = graph.invoke(Command(resume=payload), config=config)
-        status = {"status": "paused" if "__interrupt__" in result else "done", "result": result}
+        final_status = "paused" if "__interrupt__" in result else "done"
+        status = {"status": final_status, "result": result}
         self._statuses[run_id] = status
+        self.metadata.update_run_status(run_id, final_status)
         return status
