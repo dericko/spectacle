@@ -98,20 +98,21 @@ Three pieces:
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.11+ and [uv](https://docs.astral.sh/uv/getting-started/installation/)
 - Node.js 18+, npm
 - Docker (for Postgres), or a local Postgres 14+ instance
 - FFmpeg on `$PATH`
 - macOS `say` command (for TTS) — or implement `TTSProvider` for another platform
-- Manim — `pip install manim` plus its system deps ([install guide](https://docs.manim.community/en/stable/installation.html))
+- Manim — `uv pip install manim` plus its system deps ([install guide](https://docs.manim.community/en/stable/installation.html))
 
 ### 1. Clone and install Python packages
 
 ```bash
 git clone https://github.com/dericko/spectacle
 cd spectacle
-python -m venv .venv && source .venv/bin/activate
-pip install -e packages/core -e domains/education -e apps/server pytest
+uv venv
+source .venv/bin/activate
+uv pip install -e packages/core -e domains/education -e apps/server pytest
 ```
 
 ### 2. Start Postgres
@@ -144,8 +145,7 @@ Point these at any LLM API. The test suite injects fakes, so `pytest` passes wit
 ### 5. Run the stack
 
 ```bash
-# Terminal 1 — API server
-cd apps/server
+# Terminal 1 — API server (run from repo root with venv active)
 uvicorn server.main:app --reload
 
 # Terminal 2 — Next.js dev server
