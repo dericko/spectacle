@@ -1,11 +1,14 @@
 import os
 from pathlib import Path
+import mimetypes
 
 from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+
 from pydantic import BaseModel
 
 from server.run_manager import RunManager
@@ -62,6 +65,20 @@ def get_artifact(content_hash: str) -> dict:
     if not store.exists(content_hash):
         raise HTTPException(status_code=404, detail="artifact not found")
     return store.get_json(content_hash)
+
+@app.get("/api/artifacts/{content_hash}/{filename}")
+def get_any_artifact_file(content_hash: str, filename: str):
+    # Locate the target file dynamically on your disk
+    file_path = os.path.join(run_manager.artifact_root, content_hash, filename)
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Guess the correct media type based on the file extension (.mp4, .png, etc.)
+    mime_type, _ = mimetypes.guess_type(file_path)
+
+    # Fallback to binary data if the file type is unknown
+    return FileResponse(file_path, media_type=mime_type or "application/octet-stream")
 
 
 @app.post("/runs/{run_id}/simulate-crash")

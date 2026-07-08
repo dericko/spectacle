@@ -209,7 +209,7 @@ export function ArtifactTree({ runId }: { runId: string }) {
                   </span>
                 </div>
                 <video
-                  src={`/api/artifacts/${row.content_hash}/${
+                  src={`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/artifacts/${row.content_hash}/${
                     row.stage === "scene_preview"
                       ? "preview.mp4"
                       : "scene_final.mp4"
