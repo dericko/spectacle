@@ -70,17 +70,14 @@ def get_artifact(content_hash: str) -> dict:
 
 @app.get("/api/artifacts/{content_hash}/{filename}")
 def get_any_artifact_file(content_hash: str, filename: str):
-    # Locate the target file dynamically on your disk
-    file_path = os.path.join(run_manager.artifact_root, content_hash, filename)
-
-    if not os.path.exists(file_path):
+    artifact_root = run_manager.artifact_root.resolve()
+    file_path = (artifact_root / content_hash / filename).resolve()
+    if not str(file_path).startswith(str(artifact_root) + os.sep):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
-
-    # Guess the correct media type based on the file extension (.mp4, .png, etc.)
-    mime_type, _ = mimetypes.guess_type(file_path)
-
-    # Fallback to binary data if the file type is unknown
-    return FileResponse(file_path, media_type=mime_type or "application/octet-stream")
+    mime_type, _ = mimetypes.guess_type(str(file_path))
+    return FileResponse(str(file_path), media_type=mime_type or "application/octet-stream")
 
 
 @app.post("/runs/{run_id}/simulate-crash")
