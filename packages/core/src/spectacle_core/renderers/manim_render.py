@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -65,16 +66,31 @@ def render_manim(
 
     # Manim always nests output under {media_dir}/videos/{scene_stem}/{quality}/
     # regardless of --output_file; use a temp media dir then move the result.
+    # Use quality-scoped media dirs so preview and final renders never share
+    # partial_movie_file_list.txt — concurrent access to that file causes
+    # InvalidDataError mid-combine when both renders write to the same dir.
     quality_flag, quality_subdir = (
         ("-ql", "480p15") if quality == "preview" else ("-qh", "1080p60")
     )
-    media_dir = output_path.parent / "_manim_media"
-    cmd = [
-        sys.executable, "-m", "manim", "render", quality_flag,
-        "--output_file", output_path.name,
-        "--media_dir", str(media_dir),
-        str(_SCENE_FILE), scene_class,
-    ]
-    subprocess.run(cmd, env=env, cwd=output_path.parent, check=True)
+    media_dir = output_path.parent / f"_manim_media_{quality}"
+
+    def _run() -> None:
+        cmd = [
+            sys.executable, "-m", "manim", "render", quality_flag,
+            "--output_file", output_path.name,
+            "--media_dir", str(media_dir),
+            str(_SCENE_FILE), scene_class,
+        ]
+        subprocess.run(cmd, env=env, cwd=output_path.parent, check=True)
+
+    try:
+        _run()
+    except subprocess.CalledProcessError:
+        # Manim's partial-clip cache can get corrupted (e.g. concurrent renders
+        # wrote stale files). Wipe the media dir and retry once from scratch.
+        if media_dir.exists():
+            shutil.rmtree(media_dir)
+        _run()
+
     rendered = media_dir / "videos" / _SCENE_FILE.stem / quality_subdir / output_path.name
     rendered.rename(output_path)
