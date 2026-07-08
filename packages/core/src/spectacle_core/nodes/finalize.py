@@ -22,8 +22,15 @@ def ffmpeg_concat(inputs: list[str], output_path: Path) -> None:
         for path in inputs:
             f.write(f"file '{path}'\n")
         list_path = f.name
+    # Re-encode rather than stream-copy: concat demuxer + -c copy produces
+    # non-monotonic DTS when input files each start at t=0, causing A/V drift.
     subprocess.run(
-        ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_path, "-c", "copy", str(output_path)],
+        [
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_path,
+            "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+            "-c:a", "aac", "-b:a", "192k", "-ac", "2",
+            str(output_path),
+        ],
         check=True,
     )
 
