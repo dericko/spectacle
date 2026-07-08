@@ -1,9 +1,28 @@
+import json
 import threading
 import uuid
 from pathlib import Path
 from typing import Literal
 
+from pydantic import BaseModel
 from langgraph.checkpoint.postgres import PostgresSaver
+
+
+def _safe_result(obj):
+    """Recursively make a LangGraph result JSON-serializable."""
+    if isinstance(obj, BaseModel):
+        return obj.model_dump(mode="json")
+    if isinstance(obj, Path):
+        return str(obj)
+    if isinstance(obj, dict):
+        return {k: _safe_result(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_safe_result(v) for v in obj]
+    try:
+        json.dumps(obj)
+        return obj
+    except (TypeError, ValueError):
+        return str(obj)
 
 from server.db import ArtifactMetadataStore
 from spectacle_core.artifacts import LocalFileArtifactStore
@@ -55,15 +74,25 @@ class RunManager:
                 )
                 config = {"configurable": {"thread_id": run_id}}
                 result = graph.invoke({"spec": spec, "run_mode": run_mode}, config=config)
-                final_status = "paused" if "__interrupt__" in result else "done"
-                self._statuses[run_id] = {"status": final_status, "result": result}
+                interrupted = "__interrupt__" in result
+                final_status = "paused" if interrupted else "done"
+                stored: dict = {"status": final_status}
+                if interrupted:
+                    stored["result"] = _safe_result(result)
+                self._statuses[run_id] = stored
                 self.metadata.update_run_status(run_id, final_status)
         except Exception as e:
             self._statuses[run_id] = {"status": "error", "detail": str(e)}
             self.metadata.update_run_status(run_id, "error")
 
     def get_status(self, run_id: str) -> dict | None:
-        return self._statuses.get(run_id)
+        if run_id in self._statuses:
+            return self._statuses[run_id]
+        # Fall back to DB after a server restart.
+        run = self.metadata.get_run(run_id)
+        if run is None:
+            return None
+        return {"status": run["status"]}
 
     def list_runs(self) -> list[dict]:
         rows = self.metadata.list_runs()
@@ -101,8 +130,12 @@ class RunManager:
                 )
                 config = {"configurable": {"thread_id": run_id}}
                 result = graph.invoke(Command(resume=payload), config=config)
-            final_status = "paused" if "__interrupt__" in result else "done"
-            self._statuses[run_id] = {"status": final_status, "result": result}
+            interrupted = "__interrupt__" in result
+            final_status = "paused" if interrupted else "done"
+            stored: dict = {"status": final_status}
+            if interrupted:
+                stored["result"] = _safe_result(result)
+            self._statuses[run_id] = stored
             self.metadata.update_run_status(run_id, final_status)
         except Exception as e:
             self._statuses[run_id] = {"status": "error", "detail": str(e)}

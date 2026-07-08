@@ -26,8 +26,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+_DEFAULT_ARTIFACT_ROOT = Path(__file__).resolve().parents[4] / "artifacts"
+
 run_manager = RunManager(
-    artifact_root=Path(os.environ.get("SPECTACLE_ARTIFACT_ROOT", "./artifacts")).resolve(),
+    artifact_root=Path(os.environ.get("SPECTACLE_ARTIFACT_ROOT", str(_DEFAULT_ARTIFACT_ROOT))).resolve(),
     pg_conn=os.environ.get("SPECTACLE_PG_CONN", "postgresql://spectacle:spectacle@localhost:5433/spectacle"),
 )
 
@@ -156,7 +158,10 @@ async def stream_run(run_id: str):
         while True:
             status = run_manager.get_status(run_id)
             artifacts = await asyncio.to_thread(run_manager.list_artifacts, run_id)
-            payload = json.dumps({"status": status, "artifacts": artifacts})
+            try:
+                payload = json.dumps({"status": status, "artifacts": artifacts})
+            except (TypeError, ValueError) as exc:
+                payload = json.dumps({"status": {"status": status.get("status") if status else None}, "artifacts": artifacts, "_err": str(exc)})
             if payload != last_payload:
                 last_payload = payload
                 yield f"data: {payload}\n\n"

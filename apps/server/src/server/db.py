@@ -43,6 +43,16 @@ class ArtifactMetadataStore:
             )
             conn.commit()
 
+    def get_run(self, run_id: str) -> dict | None:
+        with psycopg.connect(self.conn_string) as conn:
+            row = conn.execute(
+                "SELECT run_id, name, status, created_at FROM runs WHERE run_id = %s",
+                (run_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return dict(zip(["run_id", "name", "status", "created_at"], row))
+
     def list_runs(self) -> list[dict]:
         with psycopg.connect(self.conn_string) as conn:
             rows = conn.execute(

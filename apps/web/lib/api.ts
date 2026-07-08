@@ -74,14 +74,33 @@ export function streamRun(
   runId: string,
   onEvent: (data: { status: Record<string, unknown> | null; artifacts: Array<Record<string, unknown>> }) => void,
 ): () => void {
-  const source = new EventSource(`${API_BASE}/runs/${runId}/stream`);
-  source.onmessage = (e) => {
-    try {
-      onEvent(JSON.parse(e.data));
-    } catch {
-      // ignore malformed events
-    }
+  let source: EventSource | null = null;
+  let stopped = false;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function connect() {
+    if (stopped) return;
+    source = new EventSource(`${API_BASE}/runs/${runId}/stream`);
+    source.onmessage = (e) => {
+      try {
+        onEvent(JSON.parse(e.data));
+      } catch {
+        // ignore malformed events
+      }
+    };
+    source.onerror = () => {
+      source?.close();
+      source = null;
+      if (!stopped) {
+        retryTimer = setTimeout(connect, 2000);
+      }
+    };
+  }
+
+  connect();
+  return () => {
+    stopped = true;
+    if (retryTimer) clearTimeout(retryTimer);
+    source?.close();
   };
-  source.onerror = () => source.close();
-  return () => source.close();
 }
