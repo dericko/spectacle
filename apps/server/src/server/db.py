@@ -61,10 +61,18 @@ class ArtifactMetadataStore:
 
     def list_for_run(self, run_id: str) -> list[dict]:
         with psycopg.connect(self.conn_string) as conn:
+            # DISTINCT ON keeps only the latest artifact per (stage, scene_id),
+            # preventing duplicates when both the pre-review and post-review
+            # versions of the same stage get recorded with the same hash.
             rows = conn.execute(
-                "SELECT content_hash, stage, scene_id, created_at FROM artifacts "
-                "WHERE run_id = %s ORDER BY created_at ASC",
+                "SELECT DISTINCT ON (stage, scene_id) content_hash, stage, scene_id, created_at "
+                "FROM artifacts WHERE run_id = %s "
+                "ORDER BY stage, scene_id, created_at DESC",
                 (run_id,),
             ).fetchall()
             columns = ["content_hash", "stage", "scene_id", "created_at"]
-            return [dict(zip(columns, row)) for row in rows]
+            result = [dict(zip(columns, row)) for row in rows]
+            for row in result:
+                if hasattr(row["created_at"], "isoformat"):
+                    row["created_at"] = row["created_at"].isoformat()
+            return result

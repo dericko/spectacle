@@ -66,18 +66,30 @@ class RunManager:
     def resume_run(self, run_id: str, payload: dict) -> dict:
         from langgraph.types import Command
 
-        store = LocalFileArtifactStore(self.artifact_root)
-        with PostgresSaver.from_conn_string(self.pg_conn) as checkpointer:
-            checkpointer.setup()
-            graph = build_graph(
-                domain_pack=education_pack, store=store,
-                tts_provider=MacSayTTSProvider(), checkpointer=checkpointer,
-                metadata_recorder=lambda h, stage, scene_id=None: self.metadata.record(run_id, h, stage, scene_id),
-            )
-            config = {"configurable": {"thread_id": run_id}}
-            result = graph.invoke(Command(resume=payload), config=config)
-        final_status = "paused" if "__interrupt__" in result else "done"
-        status = {"status": final_status, "result": result}
-        self._statuses[run_id] = status
-        self.metadata.update_run_status(run_id, final_status)
-        return status
+        thread = threading.Thread(
+            target=self._execute_resume, args=(run_id, payload), daemon=True
+        )
+        thread.start()
+        # Return immediately so the HTTP handler doesn't block during long renders.
+        return self._statuses.get(run_id, {"status": "running"})
+
+    def _execute_resume(self, run_id: str, payload: dict) -> None:
+        from langgraph.types import Command
+
+        try:
+            store = LocalFileArtifactStore(self.artifact_root)
+            with PostgresSaver.from_conn_string(self.pg_conn) as checkpointer:
+                checkpointer.setup()
+                graph = build_graph(
+                    domain_pack=education_pack, store=store,
+                    tts_provider=MacSayTTSProvider(), checkpointer=checkpointer,
+                    metadata_recorder=lambda h, stage, scene_id=None: self.metadata.record(run_id, h, stage, scene_id),
+                )
+                config = {"configurable": {"thread_id": run_id}}
+                result = graph.invoke(Command(resume=payload), config=config)
+            final_status = "paused" if "__interrupt__" in result else "done"
+            self._statuses[run_id] = {"status": final_status, "result": result}
+            self.metadata.update_run_status(run_id, final_status)
+        except Exception as e:
+            self._statuses[run_id] = {"status": "error", "detail": str(e)}
+            self.metadata.update_run_status(run_id, "error")

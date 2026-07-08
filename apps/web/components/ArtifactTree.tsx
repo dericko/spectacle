@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getRunArtifacts, getArtifact } from "@/lib/api";
+import { getArtifact } from "@/lib/api";
 import { ArtifactPreview } from "@/components/ArtifactPreview";
 
 type ArtifactRow = {
@@ -99,23 +99,8 @@ function ExpandedArtifact({
   );
 }
 
-export function ArtifactTree({ runId }: { runId: string }) {
-  const [rows, setRows] = useState<ArtifactRow[]>([]);
+export function ArtifactTree({ runId, rows }: { runId: string; rows: ArtifactRow[] }) {
   const [selectedHash, setSelectedHash] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    const poll = async () => {
-      const data = await getRunArtifacts(runId);
-      if (!cancelled) setRows(data as ArtifactRow[]);
-    };
-    poll();
-    const interval = setInterval(poll, 2000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [runId]);
 
   const doneStages = new Set(rows.map((r) => r.stage));
 
@@ -209,7 +194,7 @@ export function ArtifactTree({ runId }: { runId: string }) {
                   </span>
                 </div>
                 <video
-                  src={`/api/artifacts/${row.content_hash}/${
+                  src={`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/artifacts/${row.content_hash}/${
                     row.stage === "scene_preview"
                       ? "preview.mp4"
                       : "scene_final.mp4"

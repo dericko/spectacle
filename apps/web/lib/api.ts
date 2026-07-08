@@ -69,3 +69,19 @@ export async function resumeRun(runId: string) {
   if (!res.ok) throw new Error(`resume failed: ${res.status}`);
   return res.json();
 }
+
+export function streamRun(
+  runId: string,
+  onEvent: (data: { status: Record<string, unknown> | null; artifacts: Array<Record<string, unknown>> }) => void,
+): () => void {
+  const source = new EventSource(`${API_BASE}/runs/${runId}/stream`);
+  source.onmessage = (e) => {
+    try {
+      onEvent(JSON.parse(e.data));
+    } catch {
+      // ignore malformed events
+    }
+  };
+  source.onerror = () => source.close();
+  return () => source.close();
+}

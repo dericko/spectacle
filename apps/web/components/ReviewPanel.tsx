@@ -15,6 +15,7 @@ export function ReviewPanel({
   artifactType: "Script" | "SceneGraph";
   currentArtifact: Record<string, unknown>;
 }) {
+  // Panel visibility is driven by the parent (SSE stream) — no local dismiss needed.
   const [artifact, setArtifact] = useState(currentArtifact);
   const [message, setMessage] = useState("");
   const [history, setHistory] = useState<Message[]>([]);
