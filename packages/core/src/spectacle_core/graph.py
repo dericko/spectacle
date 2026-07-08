@@ -115,7 +115,7 @@ def build_graph(
         ordered = collect_scenes(state["scene_finals"], scene_graph)
         manifest: FinalManifest = mux_final(ordered, scene_graph.compute_hash(), store)
         store.put_json(manifest.compute_hash(), manifest.model_dump(mode="json"))
-        record(manifest.compute_hash(), "final_manifest")
+        record(manifest.compute_hash(), "mux")
         return {"final_manifest": manifest.model_dump(mode="json")}
 
     builder = StateGraph(GraphState)

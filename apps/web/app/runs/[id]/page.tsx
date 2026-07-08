@@ -4,21 +4,36 @@ import { useEffect, useState } from "react";
 import { ArtifactTree } from "@/components/ArtifactTree";
 import { ReviewPanel } from "@/components/ReviewPanel";
 import { Nav } from "@/components/Nav";
-import { getRun, simulateCrash, resumeRun } from "@/lib/api";
+import { streamRun, simulateCrash, resumeRun } from "@/lib/api";
+
+type ArtifactRow = {
+  content_hash: string;
+  stage: string;
+  scene_id: string | null;
+  created_at: string;
+};
 
 export default function RunPage({ params }: { params: { id: string } }) {
   const [status, setStatus] = useState<Record<string, unknown> | null>(null);
+  const [artifacts, setArtifacts] = useState<ArtifactRow[]>([]);
 
   useEffect(() => {
-    const interval = setInterval(
-      async () => setStatus(await getRun(params.id)),
-      2000
-    );
-    return () => clearInterval(interval);
+    const stop = streamRun(params.id, ({ status: s, artifacts: a }) => {
+      if (s) setStatus(s);
+      if (a) setArtifacts(a as ArtifactRow[]);
+    });
+    return stop;
   }, [params.id]);
 
   const result = status?.result as Record<string, unknown> | undefined;
   const interrupted = Boolean(result?.__interrupt__);
+  // Scene graph review comes after script review; detect by whether scene_graph is in state.
+  const interruptType = interrupted && result?.scene_graph ? "SceneGraph" : "Script";
+  const interruptArtifact =
+    (interruptType === "SceneGraph"
+      ? result?.scene_graph
+      : result?.script) as Record<string, unknown> | undefined;
+
   const shortId = params.id.length > 8 ? `${params.id.slice(0, 8)}…` : params.id;
 
   return (
@@ -110,18 +125,18 @@ export default function RunPage({ params }: { params: { id: string } }) {
         </div>
 
         {/* Review panel — shown prominently when interrupted */}
-        {interrupted && (
+        {interrupted && interruptArtifact && (
           <div style={{ marginBottom: 40 }}>
             <ReviewPanel
               runId={params.id}
-              artifactType="Script"
-              currentArtifact={(result?.script as Record<string, unknown>) ?? {}}
+              artifactType={interruptType}
+              currentArtifact={interruptArtifact}
             />
           </div>
         )}
 
         {/* Pipeline + artifacts */}
-        <ArtifactTree runId={params.id} />
+        <ArtifactTree runId={params.id} rows={artifacts} />
       </main>
     </>
   );

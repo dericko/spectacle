@@ -69,4 +69,4 @@ def test_full_run_in_auto_mode_produces_final_manifest(tmp_path):
     assert result["final_manifest"] is not None
     assert result["final_manifest"]["scene_graph_hash"]
     stages_recorded = {stage for _, stage, _ in recorded}
-    assert {"content_tree", "script", "scene_graph", "scene_final", "final_manifest"} <= stages_recorded
+    assert {"content_tree", "script", "scene_graph", "scene_final", "mux"} <= stages_recorded
