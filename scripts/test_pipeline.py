@@ -4,20 +4,20 @@ CLI test harness for the Spectacle pipeline.
 
 Usage:
   # Run all stages end-to-end with stub LLMs (no API cost):
-  python scripts/test_pipeline.py --stage all
+  uv run python scripts/test_pipeline.py --stage all
 
   # Run individual stages:
-  python scripts/test_pipeline.py --stage tts
-  python scripts/test_pipeline.py --stage manim
-  python scripts/test_pipeline.py --stage remotion
-  python scripts/test_pipeline.py --stage mux
-  python scripts/test_pipeline.py --stage graph
+  uv run python scripts/test_pipeline.py --stage tts
+  uv run python scripts/test_pipeline.py --stage manim
+  uv run python scripts/test_pipeline.py --stage remotion
+  uv run python scripts/test_pipeline.py --stage mux
+  uv run python scripts/test_pipeline.py --stage graph
 
   # Skip LLM calls (use stubs) - default for 'all' and 'graph':
-  python scripts/test_pipeline.py --stage graph --stub
+  uv run python scripts/test_pipeline.py --stage graph --stub
 
   # Use real LLMs:
-  python scripts/test_pipeline.py --stage graph --no-stub
+  uv run python scripts/test_pipeline.py --stage graph --no-stub
 """
 
 import argparse

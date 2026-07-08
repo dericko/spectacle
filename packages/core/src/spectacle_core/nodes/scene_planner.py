@@ -14,6 +14,7 @@ def run_scene_planner(script: Script) -> SceneGraph:
             verify=s.verify,
             expression=s.expression,
             stated_answer=s.stated_answer,
+            render_params=s.render_params,
         )
         for s in script.scenes
     ]

@@ -12,6 +12,7 @@ class ScriptLLMResponse(BaseModel):
     narration_text: str
     on_screen_text: str
     stated_answer: str | None = None
+    render_params: dict = {}
 
 
 ScriptLLMFn = Callable[[SceneStub], ScriptLLMResponse]
@@ -87,6 +88,7 @@ def run_script_agent(tree: ContentTree, llm_fn: ScriptLLMFn = default_script_llm
             verify=stub.verify,
             expression=stub.expression,
             stated_answer=resp.stated_answer,
+            render_params=resp.render_params,
         ))
     tree_hash = content_hash(tree.model_dump(mode="json"))
     return Script(tree_hash=tree_hash, scenes=scenes)

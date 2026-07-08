@@ -21,6 +21,7 @@ class SceneNarration(BaseModel):
     verify: bool
     expression: str | None = None
     stated_answer: str | None = None
+    render_params: dict = {}
 
 
 class Script(VersionedArtifact):

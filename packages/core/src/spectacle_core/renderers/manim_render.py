@@ -40,6 +40,7 @@ def render_manim(
     duration_s: float,
     output_path: Path,
     quality: Literal["preview", "final"],
+    render_params: dict = {},
 ) -> None:
     if not _manim_available():
         _render_placeholder(expression, stated_answer, duration_s, output_path)
@@ -51,11 +52,17 @@ def render_manim(
     mactex_bin = "/Library/TeX/texbin"
     if mactex_bin not in env.get("PATH", ""):
         env["PATH"] = mactex_bin + ":" + env.get("PATH", "")
-    env["SPECTACLE_SCENE_PARAMS"] = json.dumps({
+    scene_params: dict = {
         "expression": expression,
         "stated_answer": stated_answer,
         "duration_s": duration_s,
-    })
+    }
+    scene_params.update(render_params)
+    env["SPECTACLE_SCENE_PARAMS"] = json.dumps(scene_params)
+
+    # Use MultiStepScene when steps are provided, otherwise the simpler morph.
+    scene_class = "MultiStepScene" if render_params.get("steps") else "EquationMorphScene"
+
     # Manim always nests output under {media_dir}/videos/{scene_stem}/{quality}/
     # regardless of --output_file; use a temp media dir then move the result.
     quality_flag, quality_subdir = (
@@ -66,7 +73,7 @@ def render_manim(
         sys.executable, "-m", "manim", "render", quality_flag,
         "--output_file", output_path.name,
         "--media_dir", str(media_dir),
-        str(_SCENE_FILE), "EquationMorphScene",
+        str(_SCENE_FILE), scene_class,
     ]
     subprocess.run(cmd, env=env, cwd=output_path.parent, check=True)
     rendered = media_dir / "videos" / _SCENE_FILE.stem / quality_subdir / output_path.name

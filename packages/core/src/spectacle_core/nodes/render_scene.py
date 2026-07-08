@@ -57,11 +57,14 @@ def render_scene(
     video_path = store.file_path(scene_hash, "final.mp4")
     if entry.renderer == "manim":
         preview_path = store.file_path(scene_hash, "preview.mp4")
-        render_manim(entry.expression, entry.stated_answer, duration_s, preview_path, quality="preview")
+        render_manim(entry.expression, entry.stated_answer, duration_s, preview_path,
+                     quality="preview", render_params=entry.render_params)
         notify("scene_preview")
-        render_manim(entry.expression, entry.stated_answer, duration_s, video_path, quality="final")
+        render_manim(entry.expression, entry.stated_answer, duration_s, video_path,
+                     quality="final", render_params=entry.render_params)
     else:
-        render_remotion(entry.narration_text, entry.on_screen_text, duration_s, video_path)
+        render_remotion(entry.narration_text, entry.on_screen_text, duration_s, video_path,
+                        render_params=entry.render_params)
 
     final_path = store.file_path(scene_hash, "scene_final.mp4")
     mux_audio_video(video_path, audio_path, final_path)
