@@ -35,6 +35,7 @@ run_manager = RunManager(
 class StartRunRequest(BaseModel):
     spec: dict
     run_mode: str = "accept_edits"
+    stub_llm: bool = False
 
 
 @app.get("/runs")
@@ -44,7 +45,7 @@ def get_runs() -> list[dict]:
 
 @app.post("/runs", status_code=201)
 def post_runs(req: StartRunRequest) -> dict:
-    run_id = run_manager.start_run(req.spec, req.run_mode)
+    run_id = run_manager.start_run(req.spec, req.run_mode, stub_llm=req.stub_llm)
     return {"run_id": run_id}
 
 

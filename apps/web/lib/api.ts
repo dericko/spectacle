@@ -8,11 +8,11 @@ export async function listRuns(): Promise<Array<{ run_id: string; name: string; 
   return res.json();
 }
 
-export async function startRun(spec: Record<string, unknown>, runMode: RunMode): Promise<{ run_id: string }> {
+export async function startRun(spec: Record<string, unknown>, runMode: RunMode, stubLlm = false): Promise<{ run_id: string }> {
   const res = await fetch(`${API_BASE}/runs`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ spec, run_mode: runMode }),
+    body: JSON.stringify({ spec, run_mode: runMode, stub_llm: stubLlm }),
   });
   if (!res.ok) throw new Error(`start run failed: ${res.status}`);
   return res.json();

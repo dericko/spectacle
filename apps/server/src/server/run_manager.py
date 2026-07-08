@@ -8,6 +8,7 @@ from langgraph.checkpoint.postgres import PostgresSaver
 from server.db import ArtifactMetadataStore
 from spectacle_core.artifacts import LocalFileArtifactStore
 from spectacle_core.graph import build_graph
+from spectacle_core.nodes.script_agent import default_script_llm
 from spectacle_core.tts import MacSayTTSProvider
 from spectacle_education import education_pack
 
@@ -20,17 +21,27 @@ class RunManager:
         self._statuses: dict[str, dict] = {}
         self.metadata.setup()
 
-    def start_run(self, spec: dict, run_mode: Literal["accept_edits", "auto"]) -> str:
+    def start_run(self, spec: dict, run_mode: Literal["accept_edits", "auto"], stub_llm: bool = False) -> str:
         run_id = str(uuid.uuid4())
         self._statuses[run_id] = {"status": "running"}
         name = spec.get("learning_objective") or run_id[:8]
         self.metadata.create_run(run_id, name)
-        thread = threading.Thread(target=self._execute_run, args=(run_id, spec, run_mode), daemon=True)
+        thread = threading.Thread(target=self._execute_run, args=(run_id, spec, run_mode, stub_llm), daemon=True)
         thread.start()
         return run_id
 
-    def _execute_run(self, run_id: str, spec: dict, run_mode: str) -> None:
+    def _execute_run(self, run_id: str, spec: dict, run_mode: str, stub_llm: bool = False) -> None:
         try:
+            if stub_llm:
+                from server.stub_llms import stub_content_hint, stub_guided_practice_expression, stub_script_llm
+                script_fn = stub_script_llm
+                content_hint_fn = stub_content_hint
+                guided_practice_fn = stub_guided_practice_expression
+            else:
+                script_fn = default_script_llm
+                content_hint_fn = None
+                guided_practice_fn = None
+
             store = LocalFileArtifactStore(self.artifact_root)
             with PostgresSaver.from_conn_string(self.pg_conn) as checkpointer:
                 checkpointer.setup()
@@ -38,6 +49,9 @@ class RunManager:
                     domain_pack=education_pack, store=store,
                     tts_provider=MacSayTTSProvider(), checkpointer=checkpointer,
                     metadata_recorder=lambda h, stage, scene_id=None: self.metadata.record(run_id, h, stage, scene_id),
+                    script_llm_fn=script_fn,
+                    content_hint_fn=content_hint_fn,
+                    guided_practice_expression_fn=guided_practice_fn,
                 )
                 config = {"configurable": {"thread_id": run_id}}
                 result = graph.invoke({"spec": spec, "run_mode": run_mode}, config=config)
