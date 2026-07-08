@@ -46,16 +46,28 @@ def render_manim(
         return
 
     env = os.environ.copy()
+    # MacTeX installs to /Library/TeX/texbin which may not be in PATH when
+    # launched from a subprocess chain (e.g. LangGraph threads).
+    mactex_bin = "/Library/TeX/texbin"
+    if mactex_bin not in env.get("PATH", ""):
+        env["PATH"] = mactex_bin + ":" + env.get("PATH", "")
     env["SPECTACLE_SCENE_PARAMS"] = json.dumps({
         "expression": expression,
         "stated_answer": stated_answer,
         "duration_s": duration_s,
     })
-    quality_flag = "-ql" if quality == "preview" else "-qh"
+    # Manim always nests output under {media_dir}/videos/{scene_stem}/{quality}/
+    # regardless of --output_file; use a temp media dir then move the result.
+    quality_flag, quality_subdir = (
+        ("-ql", "480p15") if quality == "preview" else ("-qh", "1080p60")
+    )
+    media_dir = output_path.parent / "_manim_media"
     cmd = [
         sys.executable, "-m", "manim", "render", quality_flag,
         "--output_file", output_path.name,
-        "--media_dir", str(output_path.parent),
+        "--media_dir", str(media_dir),
         str(_SCENE_FILE), "EquationMorphScene",
     ]
     subprocess.run(cmd, env=env, cwd=output_path.parent, check=True)
+    rendered = media_dir / "videos" / _SCENE_FILE.stem / quality_subdir / output_path.name
+    rendered.rename(output_path)
