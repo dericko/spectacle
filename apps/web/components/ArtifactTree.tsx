@@ -12,12 +12,14 @@ type ArtifactRow = {
 };
 
 const PIPELINE_STAGES = [
-  { key: "structure", label: "structure", desc: "Spec → content tree" },
+  { key: "content_tree", label: "structure", desc: "Spec → content tree" },
   { key: "script", label: "script", desc: "Scene narration" },
   { key: "scene_graph", label: "scene_graph", desc: "Renderer routing" },
-  { key: "scene_preview", label: "render", desc: "Manim · Remotion" },
+  { key: "scene_final", label: "render", desc: "Manim · Remotion" },
   { key: "mux", label: "mux", desc: "FFmpeg assembly" },
 ];
+
+const VIDEO_STAGES = new Set(["scene_preview", "scene_final"]);
 
 function ExpandedArtifact({
   row,
@@ -37,51 +39,62 @@ function ExpandedArtifact({
       .catch((e) => setError(e.message));
   }, [row.content_hash]);
 
+  const panelStyle = {
+    background: "var(--surface)",
+    border: "1px solid var(--border-bright)",
+    borderTop: "none",
+    borderRadius: "0 0 var(--radius) var(--radius)",
+    padding: "16px 16px 14px",
+  };
+
+  const headerStyle = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  };
+
+  const labelStyle = {
+    fontSize: 11,
+    fontWeight: 600,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase" as const,
+    color: "var(--text-dim)",
+    fontFamily: "var(--font-mono), monospace",
+  };
+
+  const closeBtn = {
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    color: "var(--text-dim)",
+    fontSize: 16,
+    lineHeight: 1,
+    padding: "0 2px",
+  };
+
+  if (VIDEO_STAGES.has(row.stage)) {
+    const filename = row.stage === "scene_preview" ? "preview.mp4" : "scene_final.mp4";
+    return (
+      <div style={panelStyle}>
+        <div style={headerStyle}>
+          <span style={labelStyle}>Preview</span>
+          <button onClick={onClose} style={closeBtn} aria-label="Close">×</button>
+        </div>
+        <video
+          src={`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/artifacts/${row.content_hash}/${filename}`}
+          controls
+          style={{ width: "100%", borderRadius: 4, background: "#000", display: "block" }}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div
-      style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border-bright)",
-        borderTop: "none",
-        borderRadius: "0 0 var(--radius) var(--radius)",
-        padding: "16px 16px 14px",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 12,
-        }}
-      >
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            letterSpacing: "0.06em",
-            textTransform: "uppercase",
-            color: "var(--text-dim)",
-            fontFamily: "var(--font-mono), monospace",
-          }}
-        >
-          Preview
-        </span>
-        <button
-          onClick={onClose}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            color: "var(--text-dim)",
-            fontSize: 16,
-            lineHeight: 1,
-            padding: "0 2px",
-          }}
-          aria-label="Close"
-        >
-          ×
-        </button>
+    <div style={panelStyle}>
+      <div style={headerStyle}>
+        <span style={labelStyle}>Preview</span>
+        <button onClick={onClose} style={closeBtn} aria-label="Close">×</button>
       </div>
 
       {error && (
@@ -111,13 +124,8 @@ export function ArtifactTree({ runId, rows }: { runId: string; rows: ArtifactRow
   const activeIndex =
     lastDoneIndex < PIPELINE_STAGES.length - 1 ? lastDoneIndex + 1 : -1;
 
-  const videoRows = rows.filter(
-    (r) => r.stage === "scene_preview" || r.stage === "scene_final"
-  );
-
-  const nonVideoRows = rows.filter(
-    (r) => r.stage !== "scene_preview" && r.stage !== "scene_final"
-  );
+  const muxRow = rows.find((r) => r.stage === "mux");
+  const logRows = rows.filter((r) => r.stage !== "mux");
 
   function toggleRow(hash: string) {
     setSelectedHash((prev) => (prev === hash ? null : hash));
@@ -158,73 +166,39 @@ export function ArtifactTree({ runId, rows }: { runId: string; rows: ArtifactRow
         </div>
       </div>
 
-      {/* Video previews */}
-      {videoRows.length > 0 && (
+      {/* Final video */}
+      {muxRow && (
         <div>
           <p className="field-label" style={{ marginBottom: 12 }}>
-            Scene renders
+            Final video
           </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {videoRows.map((row) => (
-              <div
-                key={row.content_hash}
-                className="card"
-                style={{ padding: "14px 16px" }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    marginBottom: 10,
-                  }}
-                >
-                  <span className="mono" style={{ color: "var(--text-muted)" }}>
-                    {row.stage}
-                  </span>
-                  {row.scene_id && (
-                    <span
-                      style={{ color: "var(--text-dim)", fontSize: 12 }}
-                    >
-                      scene {row.scene_id}
-                    </span>
-                  )}
-                  <span className="hash" style={{ marginLeft: "auto" }}>
-                    {row.content_hash.slice(0, 12)}
-                  </span>
-                </div>
-                <video
-                  src={`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/artifacts/${row.content_hash}/${
-                    row.stage === "scene_preview"
-                      ? "preview.mp4"
-                      : "scene_final.mp4"
-                  }`}
-                  controls
-                  style={{
-                    width: "100%",
-                    borderRadius: 4,
-                    background: "#000",
-                    display: "block",
-                  }}
-                />
-              </div>
-            ))}
+          <div className="card" style={{ padding: "14px 16px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <span className="mono" style={{ color: "var(--text-muted)" }}>mux</span>
+              <span className="hash" style={{ marginLeft: "auto" }}>
+                {muxRow.content_hash.slice(0, 12)}
+              </span>
+            </div>
+            <video
+              src={`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/artifacts/${muxRow.content_hash}/final.mp4`}
+              controls
+              style={{ width: "100%", borderRadius: 4, background: "#000", display: "block" }}
+            />
           </div>
         </div>
       )}
 
       {/* Artifact log */}
-      {nonVideoRows.length > 0 && (
+      {logRows.length > 0 && (
         <div>
           <p className="field-label" style={{ marginBottom: 10 }}>
             Artifacts
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            {nonVideoRows.map((row) => {
+            {logRows.map((row) => {
               const isSelected = selectedHash === row.content_hash;
               return (
-                <div key={row.content_hash}>
-                  {/* Row header — clickable */}
+                <div key={`${row.content_hash}-${row.stage}`}>
                   <div
                     role="button"
                     tabIndex={0}
@@ -237,9 +211,7 @@ export function ArtifactTree({ runId, rows }: { runId: string; rows: ArtifactRow
                       alignItems: "center",
                       gap: 10,
                       padding: "8px 12px",
-                      background: isSelected
-                        ? "var(--surface-2)"
-                        : "var(--surface)",
+                      background: isSelected ? "var(--surface-2)" : "var(--surface)",
                       border: "1px solid var(--border)",
                       borderBottom: isSelected
                         ? "1px solid var(--border-bright)"
@@ -253,13 +225,11 @@ export function ArtifactTree({ runId, rows }: { runId: string; rows: ArtifactRow
                     }}
                     onMouseEnter={(e) => {
                       if (!isSelected)
-                        (e.currentTarget as HTMLElement).style.background =
-                          "var(--surface-2)";
+                        (e.currentTarget as HTMLElement).style.background = "var(--surface-2)";
                     }}
                     onMouseLeave={(e) => {
                       if (!isSelected)
-                        (e.currentTarget as HTMLElement).style.background =
-                          "var(--surface)";
+                        (e.currentTarget as HTMLElement).style.background = "var(--surface)";
                     }}
                   >
                     <span
@@ -274,10 +244,7 @@ export function ArtifactTree({ runId, rows }: { runId: string; rows: ArtifactRow
                       ▶
                     </span>
                     <span className="dot" />
-                    <span
-                      className="mono"
-                      style={{ color: "var(--text-muted)" }}
-                    >
+                    <span className="mono" style={{ color: "var(--text-muted)" }}>
                       {row.stage}
                     </span>
                     {row.scene_id && (
@@ -290,7 +257,6 @@ export function ArtifactTree({ runId, rows }: { runId: string; rows: ArtifactRow
                     </span>
                   </div>
 
-                  {/* Expanded preview */}
                   {isSelected && (
                     <ExpandedArtifact
                       row={row}
@@ -305,13 +271,7 @@ export function ArtifactTree({ runId, rows }: { runId: string; rows: ArtifactRow
       )}
 
       {rows.length === 0 && (
-        <div
-          style={{
-            padding: "32px 0",
-            color: "var(--text-dim)",
-            fontSize: 13,
-          }}
-        >
+        <div style={{ padding: "32px 0", color: "var(--text-dim)", fontSize: 13 }}>
           Waiting for pipeline to start…
         </div>
       )}

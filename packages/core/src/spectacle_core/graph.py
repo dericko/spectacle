@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Annotated, Callable, Literal, TypedDict
 
 from langgraph.graph import END, StateGraph
@@ -114,9 +115,15 @@ def build_graph(
         scene_graph = SceneGraph.model_validate(state["scene_graph"])
         ordered = collect_scenes(state["scene_finals"], scene_graph)
         manifest: FinalManifest = mux_final(ordered, scene_graph.compute_hash(), store)
-        store.put_json(manifest.compute_hash(), manifest.model_dump(mode="json"))
-        record(manifest.compute_hash(), "mux")
-        return {"final_manifest": manifest.model_dump(mode="json")}
+        # Store manifest JSON in both the canonical metadata dir and the video output dir.
+        # The video dir hash is used for the DB record so the API path
+        # /api/artifacts/{hash}/final.mp4 resolves to the actual file.
+        final_dir_hash = Path(manifest.output_path).parent.name
+        manifest_data = manifest.model_dump(mode="json")
+        store.put_json(manifest.compute_hash(), manifest_data)
+        store.put_json(final_dir_hash, manifest_data)
+        record(final_dir_hash, "mux")
+        return {"final_manifest": manifest_data}
 
     builder = StateGraph(GraphState)
     builder.add_node("structure", load_spec_and_structure)

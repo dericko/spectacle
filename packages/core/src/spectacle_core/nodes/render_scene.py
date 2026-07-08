@@ -16,10 +16,13 @@ def fan_out_scenes(scene_graph: SceneGraph) -> list[dict]:
 
 
 def mux_audio_video(video_path: Path, audio_path: Path, output_path: Path) -> None:
+    # Explicit map: Remotion embeds a silent AAC track; without -map, FFmpeg's
+    # auto-selection prefers that over the narration WAV (stereo AAC > mono PCM).
     # Resample to 44100 Hz: MacSay produces 22050 Hz WAV which causes AAC
     # spectral encoding errors when re-decoded during the final concat step.
     subprocess.run(
         ["ffmpeg", "-y", "-i", str(video_path), "-i", str(audio_path),
+         "-map", "0:v", "-map", "1:a",
          "-c:v", "copy", "-c:a", "aac", "-ar", "44100", "-shortest", str(output_path)],
         check=True,
     )
