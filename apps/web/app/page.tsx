@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { startRun, RunMode } from "@/lib/api";
@@ -22,8 +22,14 @@ export default function StartRunPage() {
   const [expression, setExpression] = useState("3/4 + 1/8");
   const [minutes, setMinutes] = useState(3);
   const [runMode, setRunMode] = useState<RunMode>("accept_edits");
+  const [stubLlm, setStubLlm] = useState(false);
+  const [isDebug, setIsDebug] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setIsDebug(new URLSearchParams(window.location.search).get("debug") === "true");
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -37,7 +43,8 @@ export default function StartRunPage() {
           target_duration_minutes: minutes,
           audience: "6th grade",
         },
-        runMode
+        runMode,
+        stubLlm,
       );
       router.push(`/runs/${run_id}`);
     } catch (e) {
@@ -165,6 +172,36 @@ export default function StartRunPage() {
                     </label>
                   </div>
                 </div>
+
+                {isDebug && (
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      fontSize: 12,
+                      color: "var(--text-muted)",
+                      padding: "8px 10px",
+                      background: "var(--surface-2)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--radius)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={stubLlm}
+                      onChange={(e) => setStubLlm(e.target.checked)}
+                      style={{ accentColor: "var(--amber)" }}
+                    />
+                    <span>
+                      <span style={{ fontFamily: "var(--font-mono), monospace", fontWeight: 600 }}>
+                        Stub LLM calls
+                      </span>
+                      {" "}— skip all API calls, use placeholder text
+                    </span>
+                  </label>
+                )}
 
                 {error && (
                   <div className="alert alert-error" role="alert">
