@@ -5,6 +5,10 @@ export type LayoutSceneProps = {
   durationInSeconds: number;
   items?: string[];
   sceneType?: string;
+  // Seconds into the narration when each item's sentence begins speaking,
+  // computed from actual narration word timing (see render_scene.py).
+  // Falls back to an even stagger when absent so old artifacts still render.
+  itemStartTimesS?: number[];
 };
 
 export const calculateLayoutSceneMetadata = ({ props }: { props: LayoutSceneProps }) => {
@@ -41,9 +45,10 @@ export const LayoutScene: React.FC<LayoutSceneProps> = ({
   onScreenText,
   items,
   sceneType,
+  itemStartTimesS,
 }) => {
   const frame = useCurrentFrame();
-  const { durationInFrames } = useVideoConfig();
+  const { durationInFrames, fps } = useVideoConfig();
 
   const badgeMeta = getBadgeMeta(sceneType);
 
@@ -168,7 +173,15 @@ export const LayoutScene: React.FC<LayoutSceneProps> = ({
         {/* Bullet items */}
         <div style={{ display: "flex", flexDirection: "column", gap: 26 }}>
           {items.map((item, i) => {
-            const delay = 38 + i * 20;
+            // Sync each bullet's reveal to when its sentence starts in the
+            // narration (itemStartTimesS), falling back to an even stagger.
+            // minStart keeps items after the header animation and enforces a
+            // minimum gap so items never visually overlap or reveal out of order.
+            const minStart = 38 + i * 8;
+            const delay =
+              itemStartTimesS?.[i] != null
+                ? Math.max(Math.round(itemStartTimesS[i] * fps), minStart)
+                : 38 + i * 20;
             const itemOpacity = interpolate(frame, [delay, delay + 16], [0, 1], {
               extrapolateLeft: "clamp",
               extrapolateRight: "clamp",

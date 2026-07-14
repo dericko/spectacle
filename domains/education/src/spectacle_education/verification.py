@@ -33,9 +33,23 @@ def sympy_equivalence_gate(scene: SceneGraphEntry) -> VerificationOutcome:
     except (SympifyError, TypeError, ZeroDivisionError, ValueError) as exc:
         return VerificationOutcome(passed=False, detail=f"could not parse expression: {exc}")
 
-    passed = sympy.simplify(expected - stated) == 0
-    detail = "matches" if passed else f"expected {expected}, script stated {stated}"
-    return VerificationOutcome(passed=passed, detail=detail)
+    if sympy.simplify(expected - stated) != 0:
+        return VerificationOutcome(passed=False, detail=f"expected {expected}, script stated {stated}")
+
+    # Manim's MultiStepScene shows LLM-authored intermediate algebra steps
+    # (render_params["steps"]); each must be mathematically equivalent to the
+    # original expression or a wrong step would air unverified on screen.
+    steps = scene.render_params.get("steps") or []
+    for i, step in enumerate(steps):
+        expr_str = step.get("expr", "") if isinstance(step, dict) else ""
+        try:
+            step_value = sympy.simplify(_safe_sympify(expr_str))
+        except (SympifyError, TypeError, ZeroDivisionError, ValueError) as exc:
+            return VerificationOutcome(passed=False, detail=f"step {i} could not parse expression {expr_str!r}: {exc}")
+        if sympy.simplify(expected - step_value) != 0:
+            return VerificationOutcome(passed=False, detail=f"step {i} ({expr_str!r}) is not equivalent to {expected}")
+
+    return VerificationOutcome(passed=True, detail="matches")
 
 
 def verification_gates(scene: SceneGraphEntry) -> list[VerificationGate]:

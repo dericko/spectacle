@@ -74,6 +74,11 @@ class MultiStepScene(Scene):
     render_params["steps"]: list of {"expr": "<LaTeX>", "label": "<str>"}
     render_params["expression"]: source expression (shown in header)
     render_params["sceneType"]: scene type slug (e.g. "worked_example")
+    render_params["stepStartTimesS"]: seconds into the narration when each
+        step's describing sentence begins speaking (see render_scene.py's
+        compute_item_start_times), so each step's on-screen reveal lines up
+        with the narrator describing that step. Falls back to an even split
+        of the duration when absent or mismatched in length.
     """
 
     def construct(self):
@@ -136,14 +141,19 @@ class MultiStepScene(Scene):
         ]).arrange(RIGHT, buff=0.3).to_corner(UP + RIGHT, buff=0.5)
         self.play(FadeIn(dots_group), run_time=0.2)
 
-        # ── Time budget per step ───────────────────────────────────────────────
-        per_step = (total - 0.8) / max(n, 1)
-        write_t = min(0.55, per_step * 0.22)
-        fade_t = min(0.35, per_step * 0.13)
-        hold_t = max(0.2, per_step - write_t - fade_t)
+        # ── Time budget per step, synced to narration when available ───────────
+        step_starts = params.get("stepStartTimesS")
+        if not step_starts or len(step_starts) != n:
+            step_starts = [i * (total - 0.8) / max(n, 1) for i in range(n)]
+        step_bounds = list(step_starts) + [total]
 
         # ── Steps ─────────────────────────────────────────────────────────────
         for i, step_data in enumerate(steps):
+            step_budget = max(step_bounds[i + 1] - step_bounds[i], 0.5)
+            write_t = min(0.55, step_budget * 0.22)
+            fade_t = min(0.35, step_budget * 0.13)
+            hold_t = max(0.2, step_budget - write_t - fade_t)
+
             label_str = step_data.get("label", "")
             is_last = i == n - 1
 
