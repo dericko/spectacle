@@ -136,7 +136,7 @@ def _stub_intro(stub: SceneStub, objective: str) -> ScriptLLMResponse:
     return ScriptLLMResponse(
         narration_text=narration,
         on_screen_text=objective,
-        render_params={"items": items},
+        render_params={"items": items, "sceneType": "intro"},
     )
 
 
@@ -193,7 +193,7 @@ def _stub_concept_explanation(stub: SceneStub, objective: str) -> ScriptLLMRespo
     return ScriptLLMResponse(
         narration_text=narration,
         on_screen_text=concept,
-        render_params={"items": items},
+        render_params={"items": items, "sceneType": "concept_explanation"},
     )
 
 
@@ -258,11 +258,13 @@ def _stub_equation_scene(stub: SceneStub, objective: str) -> ScriptLLMResponse:
                 f"The answer is {stated_answer}."
             )
 
+    rp: dict = {"steps": steps} if steps else {}
+    rp["sceneType"] = scene_type
     return ScriptLLMResponse(
         narration_text=narration,
         on_screen_text=expr,
         stated_answer=stated_answer,
-        render_params={"steps": steps} if steps else {},
+        render_params=rp,
     )
 
 
@@ -315,7 +317,7 @@ def _stub_recap(stub: SceneStub, objective: str) -> ScriptLLMResponse:
     return ScriptLLMResponse(
         narration_text=narration,
         on_screen_text="Key Takeaways",
-        render_params={"items": items},
+        render_params={"items": items, "sceneType": "recap"},
     )
 
 

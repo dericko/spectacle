@@ -27,6 +27,7 @@ def ffmpeg_concat(inputs: list[str], output_path: Path) -> None:
     subprocess.run(
         [
             "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_path,
+            "-r", "30",
             "-c:v", "libx264", "-preset", "fast", "-crf", "18",
             "-c:a", "aac", "-b:a", "192k", "-ac", "2",
             str(output_path),

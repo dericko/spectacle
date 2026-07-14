@@ -346,6 +346,44 @@ spectacle/
 
 ---
 
+## Renderer design
+
+### K-8 visual design system
+
+Both renderers share a common design language for K-8 educational content.
+
+**Palette** — dark-navy background (`#0b1021`), matched exactly between Remotion and Manim.
+
+**Scene-type badges** — every scene renders a colored badge indicating where the student is in the lesson:
+
+| Scene type | Badge | Color |
+|---|---|---|
+| `intro` | Introduction | `#60a5fa` (blue) |
+| `concept_explanation` | Key Concept | `#a78bfa` (purple) |
+| `worked_example` | Worked Example | `#fb923c` (orange) |
+| `guided_practice` | Try It! | `#facc15` (yellow) |
+| `recap` | Recap | `#4ade80` (green) |
+
+The badge color drives a thin top-edge accent stripe and (in Manim scenes) the progress-dot fill color for the current step.
+
+### Remotion layout scenes
+
+`LayoutScene.tsx` renders narration + bullet items as a full-screen typography card. Bullet items animate in sequentially (16-frame stagger). A global fade-out occupies the last 18 frames of every scene so clips cut cleanly.
+
+### Manim equation scenes
+
+`MultiStepScene` in `manim_scene.py` renders step-by-step fraction solving. Each step shows a step label above the LaTeX equation; the last step uses the green accent color. Progress dots in the top-right track position.
+
+`render_params.sceneType` is forwarded from the script agent to Manim so the correct badge color is applied without any domain knowledge inside core.
+
+### FFmpeg timebase normalization
+
+Remotion produces MP4s with `time_base=1/90000`. Manim produces MP4s with `time_base=1/15360` (Manim's internal clock). The FFmpeg concat demuxer silently drops all frames from clips whose timebase differs from the first clip — causing Manim scenes to disappear from the final video with no error.
+
+Fix: `mux_audio_video()` in `render_scene.py` adds `-video_track_timescale 90000` when muxing each scene's audio onto the video. This rewrites the container timebase without re-encoding, making all clips compatible before they reach the concat step.
+
+---
+
 ## Extension seams
 
 Two seams exist for a future GCP deployment without rewriting any existing code.
