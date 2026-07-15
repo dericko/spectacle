@@ -456,5 +456,8 @@ GCP deployment (Cloud Run, Cloud SQL, GCS, Cloud Tasks), concurrent multi-user r
 - No generative-video or avatar integration (only scaffolded in Phase 6).
 - Runs are versioned and cache-correct but NOT bit-reproducible: Anthropic
   has no deterministic seed, so identical inputs can yield different outputs.
-- Content safety: see Phase 2 (wired) — before that, `SafetyProfile` was
-  declared but unenforced.
+- Content safety: wired (Phase 2) — a single-LLM topic screen over generated
+  narration/on-screen text, hard-gated between `script_agent` and
+  `script_review`, raising `SafetyBlockedError` before any render. Skippable
+  only via the injectable `safety_llm_fn` test seam, never silently in
+  production.

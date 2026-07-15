@@ -27,6 +27,10 @@ def stub_content_hint(spec, stub: SceneStub) -> str:
     return f"{scene_type.replace('_', ' ').title()} scene for: {spec.learning_objective}"
 
 
+def stub_safety_llm(text: str, disallowed_topics: list[str]) -> list[str]:
+    return []
+
+
 def stub_guided_practice_expression(spec) -> str:
     # Produce a slightly easier analogous expression so the scene is distinct.
     expr = spec.worked_example_expression.strip()

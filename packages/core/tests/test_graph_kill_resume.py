@@ -40,6 +40,7 @@ def test_graph_pauses_at_interrupt_and_resumes_after_object_is_discarded(tmp_pat
             script_llm_fn=_fake_llm,
             content_hint_fn=lambda spec, stub: "hint",
             guided_practice_expression_fn=lambda spec: "1/2 + 1/4",
+            safety_llm_fn=lambda text, topics: [],
         )
         result = graph.invoke({
             "spec": {
@@ -65,6 +66,7 @@ def test_graph_pauses_at_interrupt_and_resumes_after_object_is_discarded(tmp_pat
             script_llm_fn=_fake_llm,
             content_hint_fn=lambda spec, stub: "hint",
             guided_practice_expression_fn=lambda spec: "1/2 + 1/4",
+            safety_llm_fn=lambda text, topics: [],
         )
 
         with patch("spectacle_core.nodes.render_scene.render_remotion") as mock_remotion, \

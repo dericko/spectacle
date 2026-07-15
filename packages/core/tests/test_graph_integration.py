@@ -1,10 +1,12 @@
 from unittest.mock import patch
 
+import pytest
 from langgraph.checkpoint.memory import MemorySaver
 
 from spectacle_core.artifacts import LocalFileArtifactStore
 from spectacle_core.domain_pack import ContentTree, SceneStub
 from spectacle_core.graph import build_graph
+from spectacle_core.nodes.safety_gate import SafetyBlockedError
 from spectacle_core.nodes.script_agent import ScriptLLMResponse
 from spectacle_education import education_pack
 
@@ -34,6 +36,7 @@ def test_full_run_in_auto_mode_produces_final_manifest(tmp_path):
         script_llm_fn=_fake_llm,
         content_hint_fn=lambda spec, stub: "hint",
         guided_practice_expression_fn=lambda spec: "1/2 + 1/4",
+        safety_llm_fn=lambda text, topics: [],
         metadata_recorder=lambda h, stage, scene_id=None: recorded.append((h, stage, scene_id)),
     )
     config = {"configurable": {"thread_id": "test-run-1"}}
@@ -95,6 +98,9 @@ def test_structure_and_script_agent_are_cached_across_runs(tmp_path):
         return _fake_llm(stub)
     counting_llm.fingerprint = "script_agent@test"
 
+    def fake_safety_llm(text, topics):
+        return []
+
     spec = {
         "learning_objective": "add fractions",
         "worked_example_expression": "3/4 + 1/8",
@@ -109,6 +115,7 @@ def test_structure_and_script_agent_are_cached_across_runs(tmp_path):
             script_llm_fn=counting_llm,
             content_hint_fn=counting_content_hint,
             guided_practice_expression_fn=counting_guided_practice,
+            safety_llm_fn=fake_safety_llm,
         )
         config = {"configurable": {"thread_id": thread_id}}
         with patch("spectacle_core.nodes.render_scene.render_remotion"), \
@@ -126,3 +133,32 @@ def test_structure_and_script_agent_are_cached_across_runs(tmp_path):
     # Same spec + same fingerprints ⇒ structure and script_agent are cache hits,
     # so the LLM stubs must not be called again on the second run.
     assert call_counts == first_run_counts
+
+
+def test_run_with_disallowed_topic_in_script_is_blocked_before_render(tmp_path):
+    store = LocalFileArtifactStore(tmp_path)
+    checkpointer = MemorySaver()
+    graph = build_graph(
+        domain_pack=education_pack, store=store, tts_provider=_FakeTTS(), checkpointer=checkpointer,
+        script_llm_fn=_fake_llm,
+        content_hint_fn=lambda spec, stub: "hint",
+        guided_practice_expression_fn=lambda spec: "1/2 + 1/4",
+        safety_llm_fn=lambda text, topics: ["violence"],
+    )
+    config = {"configurable": {"thread_id": "test-run-safety-blocked"}}
+
+    with patch("spectacle_core.nodes.render_scene.render_remotion") as mock_remotion, \
+         patch("spectacle_core.nodes.render_scene.render_manim") as mock_manim:
+        with pytest.raises(SafetyBlockedError):
+            graph.invoke({
+                "spec": {
+                    "learning_objective": "add fractions",
+                    "worked_example_expression": "3/4 + 1/8",
+                    "target_duration_minutes": 1,
+                    "audience": "6th grade",
+                },
+                "run_mode": "auto",
+            }, config=config)
+
+    mock_remotion.assert_not_called()
+    mock_manim.assert_not_called()

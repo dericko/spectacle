@@ -27,6 +27,7 @@ from server.db import ArtifactMetadataStore
 from server.job_queue import JobQueue, ThreadJobQueue
 from spectacle_core.artifacts import LocalFileArtifactStore
 from spectacle_core.graph import build_graph
+from spectacle_core.nodes.safety_gate import default_safety_llm
 from spectacle_core.nodes.script_agent import default_script_llm
 from spectacle_core.tts import MacSayTTSProvider
 from spectacle_education import education_pack
@@ -56,14 +57,21 @@ class RunManager:
     def _execute_run(self, run_id: str, spec: dict, run_mode: str, stub_llm: bool = False) -> None:
         try:
             if stub_llm:
-                from server.stub_llms import stub_content_hint, stub_guided_practice_expression, stub_script_llm
+                from server.stub_llms import (
+                    stub_content_hint,
+                    stub_guided_practice_expression,
+                    stub_safety_llm,
+                    stub_script_llm,
+                )
                 script_fn = stub_script_llm
                 content_hint_fn = stub_content_hint
                 guided_practice_fn = stub_guided_practice_expression
+                safety_fn = stub_safety_llm
             else:
                 script_fn = default_script_llm
                 content_hint_fn = default_content_hint_llm
                 guided_practice_fn = default_guided_practice_expression_llm
+                safety_fn = default_safety_llm
 
             store = LocalFileArtifactStore(self.artifact_root)
             with PostgresSaver.from_conn_string(self.pg_conn) as checkpointer:
@@ -75,6 +83,7 @@ class RunManager:
                     script_llm_fn=script_fn,
                     content_hint_fn=content_hint_fn,
                     guided_practice_expression_fn=guided_practice_fn,
+                    safety_llm_fn=safety_fn,
                 )
                 config = {"configurable": {"thread_id": run_id}}
                 result = graph.invoke({"spec": spec, "run_mode": run_mode}, config=config)

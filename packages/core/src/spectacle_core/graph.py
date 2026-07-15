@@ -12,6 +12,7 @@ from spectacle_core.node_cache import cached_or_compute, node_input_key
 from spectacle_core.nodes.finalize import collect_scenes, mux_final
 from spectacle_core.nodes.interrupts import interrupt_review
 from spectacle_core.nodes.render_scene import fan_out_scenes, render_scene
+from spectacle_core.nodes.safety_gate import default_safety_llm, run_safety_gate
 from spectacle_core.nodes.scene_planner import run_scene_planner
 from spectacle_core.nodes.script_agent import default_script_llm, run_script_agent
 from spectacle_core.nodes.verification_gate import run_verification_gate
@@ -43,6 +44,7 @@ def build_graph(
     script_llm_fn=default_script_llm,
     content_hint_fn=None,
     guided_practice_expression_fn=None,
+    safety_llm_fn=default_safety_llm,
     metadata_recorder: MetadataRecorderFn | None = None,
 ):
     def record(content_hash_value: str, stage: str, scene_id: str | None = None) -> None:
@@ -75,6 +77,11 @@ def build_graph(
             store, key, lambda: run_script_agent(tree, llm_fn=script_llm_fn), Script)
         record(script.compute_hash(), "script")
         return {"script": script.model_dump(mode="json")}
+
+    def safety_gate_node(state: GraphState) -> dict:
+        script = Script.model_validate(state["script"])
+        run_safety_gate(script, domain_pack.safety_profile, safety_llm_fn=safety_llm_fn)
+        return {}
 
     def script_review_node(state: GraphState) -> dict:
         script = Script.model_validate(state["script"])
@@ -136,6 +143,7 @@ def build_graph(
     builder = StateGraph(GraphState)
     builder.add_node("structure", load_spec_and_structure)
     builder.add_node("script_agent", script_agent_node)
+    builder.add_node("safety_gate", safety_gate_node)
     builder.add_node("script_review", script_review_node)
     builder.add_node("scene_planner", scene_planner_node)
     builder.add_node("scene_graph_review", scene_graph_review_node)
@@ -146,7 +154,8 @@ def build_graph(
 
     builder.set_entry_point("structure")
     builder.add_edge("structure", "script_agent")
-    builder.add_edge("script_agent", "script_review")
+    builder.add_edge("script_agent", "safety_gate")
+    builder.add_edge("safety_gate", "script_review")
     builder.add_edge("script_review", "scene_planner")
     builder.add_edge("scene_planner", "scene_graph_review")
     builder.add_edge("scene_graph_review", "verification_gate")
