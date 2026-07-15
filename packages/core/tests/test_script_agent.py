@@ -50,3 +50,33 @@ def test_script_tree_hash_matches_content_hash_of_tree():
     tree = _tree()
     script = run_script_agent(tree, llm_fn=_fake_llm)
     assert script.tree_hash == content_hash(tree.model_dump(mode="json"))
+
+
+def test_item_icons_forwarded_when_lengths_match():
+    def fake_llm(stub: SceneStub) -> ScriptLLMResponse:
+        return ScriptLLMResponse(
+            narration_text="a. b.", on_screen_text="Ideas",
+            items=["a", "b"], item_icons=["lightbulb", "target"],
+        )
+
+    tree = ContentTree(spec_hash="deadbeef", scenes=[
+        SceneStub(scene_id="intro_1", render_hint="layout", content_hint="hi",
+                   target_duration_s=10.0, verify=False),
+    ])
+    script = run_script_agent(tree, llm_fn=fake_llm)
+    assert script.scenes[0].render_params["itemIcons"] == ["lightbulb", "target"]
+
+
+def test_item_icons_dropped_when_lengths_mismatch():
+    def fake_llm(stub: SceneStub) -> ScriptLLMResponse:
+        return ScriptLLMResponse(
+            narration_text="a. b.", on_screen_text="Ideas",
+            items=["a", "b"], item_icons=["lightbulb"],
+        )
+
+    tree = ContentTree(spec_hash="deadbeef", scenes=[
+        SceneStub(scene_id="intro_1", render_hint="layout", content_hint="hi",
+                   target_duration_s=10.0, verify=False),
+    ])
+    script = run_script_agent(tree, llm_fn=fake_llm)
+    assert "itemIcons" not in script.scenes[0].render_params

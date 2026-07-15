@@ -370,7 +370,17 @@ The badge color drives a thin top-edge accent stripe and (in Manim scenes) the p
 
 ### Remotion layout scenes
 
-`LayoutScene.tsx` renders narration + bullet items as a full-screen typography card. Bullet items animate in sequentially (16-frame stagger). A global fade-out occupies the last 18 frames of every scene so clips cut cleanly.
+`LayoutScene.tsx` renders narration + bullet items as a full-screen typography card, using one of three layout variants chosen from the scene type so the same component doesn't feel repetitive across a lesson:
+
+| Scene type | Layout | Why |
+|---|---|---|
+| `intro`, `recap` | **Cards** | punchy summary — bullets as a horizontal row of cards, active card scales up |
+| `concept_explanation` | **Spotlight** | bullets on the left; a large icon panel on the right crossfades to the visual for whichever bullet is currently being narrated |
+| `worked_example`, `guided_practice` | **Timeline** | sequential/step-like content — bullets laid out along a connecting line with icon nodes that light up in order |
+
+Every bullet carries a `render_params.itemIcons[i]` entry — one of a fixed set of inline-SVG icons defined in `icons.tsx` (`lightbulb`, `target`, `book`, `chart_bar`, `chart_line`, `check`, `calculator`, `puzzle`, `star`, `arrow_right`, `compare`, `clock`). The script agent's LLM call picks the icon per bullet at the same time it writes the bullet text (see `_ICON_NAMES` / `item_icons` in `script_agent.py`); a bullet's icon is its visual element, so no separate image-generation call is needed. If `itemIcons` is missing or its length doesn't match `items` (e.g. an older cached artifact), the component falls back to a deterministic icon cycle rather than rendering a blank slot.
+
+Bullets reveal at `render_params.itemStartTimesS[i]` — the second within the narration where that bullet's sentence begins speaking (computed in `render_scene.py` from word-count timing against the synthesized audio duration) — so on-screen reveals stay in sync with what's being said instead of an arbitrary even stagger. The active bullet (and, in the Spotlight/Timeline layouts, its icon) is highlighted for as long as its sentence is the one being narrated. A global fade-out occupies the last 18 frames of every scene so clips cut cleanly.
 
 ### Manim equation scenes
 

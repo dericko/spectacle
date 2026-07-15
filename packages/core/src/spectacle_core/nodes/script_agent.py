@@ -18,6 +18,7 @@ class ScriptLLMResponse(BaseModel):
     on_screen_text: str
     stated_answer: str | None = None
     items: list[str] = []
+    item_icons: list[str] = []
     steps: list[ScriptStep] = []
     render_params: dict = {}
 
@@ -25,6 +26,15 @@ class ScriptLLMResponse(BaseModel):
 ScriptLLMFn = Callable[[SceneStub], ScriptLLMResponse]
 
 _client: anthropic.Anthropic | None = None
+
+# Must stay in sync with the icon names in apps/renderer-remotion/src/icons.tsx.
+# A fixed enum (rather than open-ended image generation) keeps the per-bullet
+# visual deterministic and renderable headlessly, while still letting the LLM
+# choose which concept fits each bullet.
+_ICON_NAMES = [
+    "lightbulb", "target", "book", "chart_bar", "chart_line", "check",
+    "calculator", "puzzle", "star", "arrow_right", "compare", "clock",
+]
 
 _SCRIPT_TOOL = {
     "name": "write_scene_script",
@@ -55,6 +65,15 @@ _SCRIPT_TOOL = {
                 "description": (
                     "2-4 short bullet points for a layout scene, each restating one idea "
                     "from narration_text in order. Omit for non-layout scenes."
+                ),
+            },
+            "item_icons": {
+                "type": "array",
+                "items": {"type": "string", "enum": _ICON_NAMES},
+                "description": (
+                    "One icon name per entry in 'items', same order and length, picking "
+                    "whichever icon best represents that bullet's visual idea. Required "
+                    "whenever 'items' is provided."
                 ),
             },
             "steps": {
@@ -101,7 +120,9 @@ def default_script_llm(stub: SceneStub) -> ScriptLLMResponse:
     answer_instruction = "\nInclude stated_answer: the simplified result of the expression." if stub.verify else ""
     items_instruction = (
         "\nInclude 2-4 short 'items' (bullet points) covering the key ideas, and write "
-        "narration_text as exactly one sentence per item, in the same order, describing that item."
+        "narration_text as exactly one sentence per item, in the same order, describing that item. "
+        "Also include 'item_icons': one icon name per item (same order/length) picking whichever "
+        "icon best matches that bullet's idea."
         if stub.render_hint == "layout" else ""
     )
     steps_instruction = (
@@ -129,6 +150,7 @@ def default_script_llm(stub: SceneStub) -> ScriptLLMResponse:
         on_screen_text=data["on_screen_text"],
         stated_answer=data.get("stated_answer"),
         items=data.get("items") or [],
+        item_icons=data.get("item_icons") or [],
         steps=[ScriptStep.model_validate(s) for s in (data.get("steps") or [])],
     )
 
@@ -140,6 +162,10 @@ def run_script_agent(tree: ContentTree, llm_fn: ScriptLLMFn = default_script_llm
         render_params = dict(resp.render_params)
         if resp.items:
             render_params["items"] = resp.items
+            # Only trust item_icons when it lines up 1:1 with items; otherwise
+            # the Remotion side falls back to a deterministic icon cycle.
+            if resp.item_icons and len(resp.item_icons) == len(resp.items):
+                render_params["itemIcons"] = resp.item_icons
         if resp.steps:
             render_params["steps"] = [s.model_dump() for s in resp.steps]
         scenes.append(SceneNarration(
