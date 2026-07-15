@@ -18,7 +18,7 @@ Spec-driven, agent-orchestrated video generation pipeline. Drop in a content spe
 
 ## How it works
 
-A run starts with a **content spec** — a small JSON object describing what you want to teach (or pitch, or explain). The spec flows through a LangGraph graph whose nodes produce content-addressed artifacts. Each artifact is hashed from its inputs; re-running the same spec skips every stage whose inputs haven't changed.
+A run starts with a **content spec** — a small JSON object describing what you want to teach (or pitch, or explain). The spec flows through a LangGraph graph whose nodes produce content-addressed artifacts, each hashed from its inputs. See [Content-addressed artifacts](#content-addressed-artifacts) below for exactly which stages skip work today versus which still re-run every time.
 
 **Pipeline stages:**
 
@@ -42,6 +42,36 @@ Spec → Structure → Script Agent → [Interrupt A] → Scene Planner → [Int
 | `accept_edits` (default) | Pauses at Interrupt A and B for human review |
 | `auto` | Skips both interrupts; verification gate still always runs |
 
+```mermaid
+flowchart TD
+    spec[Lesson Spec] --> structure
+    structure --> script_agent
+    script_agent --> script_review[script_review · human interrupt A]
+    script_review --> scene_planner
+    scene_planner --> scene_graph_review[scene_graph_review · human interrupt B]
+    scene_graph_review --> verify[verification_gate · HARD sympy gate]
+    verify -->|fan-out Send| render[render_scene per scene]
+    render --> collect[collect_scenes]
+    collect --> mux[mux_final]
+    mux --> mp4[final.mp4]
+
+    subgraph exec[Run execution]
+      note1["current: threading.Thread per run + Postgres checkpointer<br/>future seam: JobQueue impl swappable for Celery/Cloud Tasks<br/>(orchestration logic untouched)"]
+    end
+
+    subgraph optional[Optional, off the instructional critical path]
+      deco["decorative media (image+KenBurns / gen-video)<br/>composites INSIDE render_scene, per scene<br/>fallback: none"]
+      avatar["avatar track (HeyGen)<br/>composites AFTER mux_final, timeline-global<br/>fallback: audio-only"]
+    end
+    deco -.per-scene overlay.-> render
+    avatar -.PiP or synced track.-> mux
+
+    subgraph langs[Language boundary]
+      py["Python: LangGraph orchestration + sympy verification"]
+      ts["TypeScript/Remotion + Manim: rendering (subprocess)"]
+    end
+```
+
 ---
 
 ## Architecture
@@ -54,7 +84,19 @@ The repo has three layers that depend only downward.
 
 ### Content-addressed artifacts
 
-Every pipeline stage produces a pydantic model that embeds its upstream hash and a `node_version` string. The hash is SHA-256 of canonical JSON (sorted keys, no whitespace). Before running any node, the graph checks whether an artifact with that hash already exists in the store — if it does, the node is skipped.
+Every pipeline stage produces a pydantic model that embeds its upstream hash
+and a `node_version` string, stored under the SHA-256 of its canonical JSON.
+
+**What actually skips work today (pre-hardening):**
+- The **render stage** skips a scene whose `scene_input_hash()` already has a
+  `scene_final.mp4` in the store (`nodes/render_scene.py`).
+- **Same-thread resume**: LangGraph's Postgres checkpointer replays a run from
+  its last completed node after a crash/interrupt.
+
+**What does NOT skip yet:** `structure`, `script_agent`, `scene_planner`, and
+`verification_gate` re-run on every fresh run, even for an unchanged spec.
+(Cross-run skipping for the two LLM nodes is added in the hardening plan,
+Phase 1.)
 
 Per-scene hashing uses only that scene's own fields: narration text, on-screen text, renderer tag, render params, expression, and stated answer. Editing one scene's text invalidates only that scene's render — siblings are reused untouched.
 
@@ -405,3 +447,14 @@ Two seams exist for a future GCP deployment without rewriting any existing code.
 **render_scene → Cloud Tasks.** `render_scene.py` currently dispatches rendering in-process. Cloud Tasks dispatch can reuse the same `interrupt()` / `Command(resume=…)` primitive already used for human review — the resume signal comes from a Cloud Tasks callback instead of a human click. Graph topology stays identical.
 
 GCP deployment (Cloud Run, Cloud SQL, GCS, Cloud Tasks), concurrent multi-user runs, and CI/CD are not implemented in this repo.
+
+## Known gaps (as of this writing)
+
+- No golden dataset of spec→video pairs; no calibrated evaluators.
+- No CI (added in hardening Phase 4).
+- TTS is macOS-only `say`, no SSML/lexicon (replaced in Phase 3).
+- No generative-video or avatar integration (only scaffolded in Phase 6).
+- Runs are versioned and cache-correct but NOT bit-reproducible: Anthropic
+  has no deterministic seed, so identical inputs can yield different outputs.
+- Content safety: see Phase 2 (wired) — before that, `SafetyProfile` was
+  declared but unenforced.
