@@ -1,5 +1,4 @@
 import json
-import threading
 import uuid
 from pathlib import Path
 from typing import Literal
@@ -25,6 +24,7 @@ def _safe_result(obj):
         return str(obj)
 
 from server.db import ArtifactMetadataStore
+from server.job_queue import JobQueue, ThreadJobQueue
 from spectacle_core.artifacts import LocalFileArtifactStore
 from spectacle_core.graph import build_graph
 from spectacle_core.nodes.script_agent import default_script_llm
@@ -37,11 +37,12 @@ from spectacle_education.structure_agent import (
 
 
 class RunManager:
-    def __init__(self, artifact_root: Path, pg_conn: str) -> None:
+    def __init__(self, artifact_root: Path, pg_conn: str, job_queue: JobQueue | None = None) -> None:
         self.artifact_root = Path(artifact_root)
         self.pg_conn = pg_conn
         self.metadata = ArtifactMetadataStore(pg_conn)
         self._statuses: dict[str, dict] = {}
+        self.job_queue = job_queue if job_queue is not None else ThreadJobQueue()
         self.metadata.setup()
 
     def start_run(self, spec: dict, run_mode: Literal["accept_edits", "auto"], stub_llm: bool = False) -> str:
@@ -49,8 +50,7 @@ class RunManager:
         self._statuses[run_id] = {"status": "running"}
         name = spec.get("learning_objective") or run_id[:8]
         self.metadata.create_run(run_id, name)
-        thread = threading.Thread(target=self._execute_run, args=(run_id, spec, run_mode, stub_llm), daemon=True)
-        thread.start()
+        self.job_queue.submit(lambda: self._execute_run(run_id, spec, run_mode, stub_llm))
         return run_id
 
     def _execute_run(self, run_id: str, spec: dict, run_mode: str, stub_llm: bool = False) -> None:
@@ -111,12 +111,7 @@ class RunManager:
         return self.metadata.list_for_run(run_id)
 
     def resume_run(self, run_id: str, payload: dict) -> dict:
-        from langgraph.types import Command
-
-        thread = threading.Thread(
-            target=self._execute_resume, args=(run_id, payload), daemon=True
-        )
-        thread.start()
+        self.job_queue.submit(lambda: self._execute_resume(run_id, payload))
         # Return immediately so the HTTP handler doesn't block during long renders.
         return self._statuses.get(run_id, {"status": "running"})
 
