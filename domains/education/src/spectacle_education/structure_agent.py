@@ -4,6 +4,7 @@ import anthropic
 
 from spectacle_core.domain_pack import ContentTree, SceneStub
 from spectacle_core.hashing import content_hash
+from spectacle_core.versioning import compute_fingerprint
 from spectacle_education.scene_menu import budget_scenes
 from spectacle_education.spec import EducationSpec
 
@@ -11,6 +12,17 @@ ContentHintFn = Callable[[EducationSpec, SceneStub], str]
 GuidedPracticeExpressionFn = Callable[[EducationSpec], str]
 
 _client: anthropic.Anthropic | None = None
+
+_STRUCTURE_MODEL = "claude-haiku-4-5-20251001"
+# Both structure-agent LLM calls share one fingerprint: they're versioned as a
+# unit (the "structure" node), not individually.
+_STRUCTURE_TEMPLATE = (
+    "content_hint: pedagogical-angle sentence for a scene given learning_objective+audience\n"
+    "guided_practice_expression: analogous easier expression given worked_example_expression"
+)
+STRUCTURE_FINGERPRINT = compute_fingerprint(
+    "structure", _STRUCTURE_MODEL, _STRUCTURE_TEMPLATE, {"max_tokens": 80}
+)
 
 
 def _get_client() -> anthropic.Anthropic:
@@ -37,6 +49,9 @@ def default_content_hint_llm(spec: EducationSpec, stub: SceneStub) -> str:
     return msg.content[0].text.strip()
 
 
+default_content_hint_llm.fingerprint = STRUCTURE_FINGERPRINT
+
+
 def default_guided_practice_expression_llm(spec: EducationSpec) -> str:
     msg = _get_client().messages.create(
         model="claude-haiku-4-5-20251001",
@@ -51,6 +66,9 @@ def default_guided_practice_expression_llm(spec: EducationSpec) -> str:
         }],
     )
     return msg.content[0].text.strip()
+
+
+default_guided_practice_expression_llm.fingerprint = STRUCTURE_FINGERPRINT
 
 
 def structure(

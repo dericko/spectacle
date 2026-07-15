@@ -80,3 +80,15 @@ def test_item_icons_dropped_when_lengths_mismatch():
     ])
     script = run_script_agent(tree, llm_fn=fake_llm)
     assert "itemIcons" not in script.scenes[0].render_params
+
+
+def test_script_node_version_comes_from_llm_fingerprint():
+    def fake_llm(stub):
+        return ScriptLLMResponse(narration_text="hi", on_screen_text="Hi")
+    fake_llm.fingerprint = "script_agent@abc123"
+
+    tree = ContentTree(spec_hash="x", scenes=[
+        SceneStub(scene_id="intro_1", render_hint="layout", content_hint="c",
+                  target_duration_s=20.0, verify=False)])
+    script = run_script_agent(tree, llm_fn=fake_llm)
+    assert script.node_version == "script_agent@abc123"

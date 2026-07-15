@@ -1,3 +1,4 @@
+import json as _json
 from typing import Callable
 
 import anthropic
@@ -6,6 +7,7 @@ from pydantic import BaseModel
 from spectacle_core.domain_pack import ContentTree, SceneStub
 from spectacle_core.hashing import content_hash
 from spectacle_core.models import SceneNarration, Script
+from spectacle_core.versioning import compute_fingerprint
 
 
 class ScriptStep(BaseModel):
@@ -107,6 +109,16 @@ _SCRIPT_TOOL = {
 }
 
 
+_SCRIPT_MODEL = "claude-haiku-4-5-20251001"
+# The static template = the tool schema + the fixed instruction skeleton.
+# (Per-stub content enters the cache key via the upstream ContentTree hash,
+# so it must NOT be part of the fingerprint.)
+_SCRIPT_TEMPLATE = _json.dumps(_SCRIPT_TOOL, sort_keys=True)
+SCRIPT_AGENT_FINGERPRINT = compute_fingerprint(
+    "script_agent", _SCRIPT_MODEL, _SCRIPT_TEMPLATE, {"max_tokens": 400, "tool_choice": "any"}
+)
+
+
 def _get_client() -> anthropic.Anthropic:
     global _client
     if _client is None:
@@ -155,6 +167,9 @@ def default_script_llm(stub: SceneStub) -> ScriptLLMResponse:
     )
 
 
+default_script_llm.fingerprint = SCRIPT_AGENT_FINGERPRINT
+
+
 def run_script_agent(tree: ContentTree, llm_fn: ScriptLLMFn = default_script_llm) -> Script:
     scenes = []
     for stub in tree.scenes:
@@ -180,4 +195,5 @@ def run_script_agent(tree: ContentTree, llm_fn: ScriptLLMFn = default_script_llm
             render_params=render_params,
         ))
     tree_hash = content_hash(tree.model_dump(mode="json"))
-    return Script(tree_hash=tree_hash, scenes=scenes)
+    fingerprint = getattr(llm_fn, "fingerprint", "script_agent@stub")
+    return Script(node_version=fingerprint, tree_hash=tree_hash, scenes=scenes)
