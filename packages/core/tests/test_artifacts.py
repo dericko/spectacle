@@ -30,3 +30,27 @@ def test_put_file_copies_and_file_exists_reports_it(tmp_path):
 def test_file_path_returns_expected_location(tmp_path):
     store = LocalFileArtifactStore(tmp_path)
     assert store.file_path("h1", "final.mp4") == tmp_path / "h1" / "final.mp4"
+
+
+def test_file_path_rejects_path_traversal_content_hash(tmp_path):
+    store = LocalFileArtifactStore(tmp_path)
+    with pytest.raises(ValueError, match="path traversal"):
+        store.file_path("..", "artifact.json")
+
+
+def test_file_path_rejects_path_traversal_filename(tmp_path):
+    store = LocalFileArtifactStore(tmp_path)
+    with pytest.raises(ValueError, match="path traversal"):
+        store.file_path("h1", "../../etc/passwd")
+
+
+def test_exists_rejects_path_traversal_content_hash(tmp_path):
+    store = LocalFileArtifactStore(tmp_path)
+    with pytest.raises(ValueError, match="path traversal"):
+        store.exists("..")
+
+
+def test_get_json_rejects_path_traversal_content_hash(tmp_path):
+    store = LocalFileArtifactStore(tmp_path)
+    with pytest.raises(ValueError, match="path traversal"):
+        store.get_json("..")

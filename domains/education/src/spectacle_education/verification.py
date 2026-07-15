@@ -1,22 +1,19 @@
-import re
-
 import sympy
 from sympy import SympifyError
 
 from spectacle_core.domain_pack import VerificationGate, VerificationOutcome
 from spectacle_core.models import SceneGraphEntry
+from spectacle_core.safety import delatex, is_safe_math_expression
 
-# sympy.sympify evaluates via Python's eval() under the hood, so passing
-# LLM-generated strings straight through is a code-execution risk (e.g.
-# "__import__('os').system(...)" or attribute-chain sandbox escapes like
-# "().__class__.__bases__[0].__subclasses__()"). Scenes only ever need
-# numeric arithmetic, so reject anything outside that character set before
-# it ever reaches sympify.
-_SAFE_EXPRESSION_RE = re.compile(r"^[0-9+\-*/().\s%^]+$")
+# The script agent writes render_params["steps"][i]["expr"] as LaTeX so
+# Manim's MathTex can render it (e.g. r"\frac{3}{4} + \frac{1}{8}"). Normalize
+# that to plain arithmetic before it reaches the safety/sympify checks below,
+# which only understand digits and operators.
 
 
 def _safe_sympify(expr_str: str) -> sympy.Expr:
-    if not _SAFE_EXPRESSION_RE.fullmatch(expr_str):
+    expr_str = delatex(expr_str)
+    if not is_safe_math_expression(expr_str):
         raise ValueError(f"disallowed characters in expression: {expr_str!r}")
     return sympy.sympify(expr_str)
 

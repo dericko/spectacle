@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getArtifact } from "@/lib/api";
+import { artifactFileUrl, getArtifact } from "@/lib/api";
 import { ArtifactPreview } from "@/components/ArtifactPreview";
 
 type ArtifactRow = {
@@ -82,7 +82,7 @@ function ExpandedArtifact({
           <button onClick={onClose} style={closeBtn} aria-label="Close">×</button>
         </div>
         <video
-          src={`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/artifacts/${row.content_hash}/${filename}`}
+          src={artifactFileUrl(row.content_hash, filename)}
           controls
           style={{ width: "100%", borderRadius: 4, background: "#000", display: "block" }}
         />
@@ -180,7 +180,7 @@ export function ArtifactTree({ runId, rows }: { runId: string; rows: ArtifactRow
               </span>
             </div>
             <video
-              src={`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/artifacts/${muxRow.content_hash}/final.mp4`}
+              src={artifactFileUrl(muxRow.content_hash, "final.mp4")}
               controls
               style={{ width: "100%", borderRadius: 4, background: "#000", display: "block" }}
             />

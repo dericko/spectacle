@@ -6,7 +6,22 @@ import sys
 from pathlib import Path
 from typing import Literal
 
+from spectacle_core.safety import is_safe_math_expression_or_latex
+
 _SCENE_FILE = Path(__file__).with_name("manim_scene.py")
+
+
+def _reject_unsafe_expressions(expression: str, stated_answer: str, render_params: dict) -> None:
+    """Enforced unconditionally for every Manim render, regardless of the
+    caller's `verify` flag — verify only gates whether the math is checked
+    for correctness, not whether the text is safe to compile as LaTeX."""
+    candidates = [expression, stated_answer]
+    for step in render_params.get("steps") or []:
+        if isinstance(step, dict):
+            candidates.append(step.get("expr"))
+    for candidate in candidates:
+        if candidate is not None and not is_safe_math_expression_or_latex(candidate):
+            raise ValueError(f"unsafe expression rejected before LaTeX rendering: {candidate!r}")
 
 
 def _manim_available() -> bool:
@@ -43,6 +58,8 @@ def render_manim(
     quality: Literal["preview", "final"],
     render_params: dict = {},
 ) -> None:
+    _reject_unsafe_expressions(expression, stated_answer, render_params)
+
     if not _manim_available():
         _render_placeholder(expression, stated_answer, duration_s, output_path)
         return

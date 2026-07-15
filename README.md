@@ -123,6 +123,8 @@ docker compose up -d
 
 Starts Postgres on port 5432 with credentials `spectacle / spectacle / spectacle`. To use an existing instance, set `SPECTACLE_PG_CONN` before running the server.
 
+Every API route requires a shared bearer token: set `SPECTACLE_API_KEY` (server) and `NEXT_PUBLIC_SPECTACLE_API_KEY` (web app, same value) before running the stack. CORS alone does not stop direct HTTP clients from reaching the API, so the server refuses to start serving requests (500s) until this is configured.
+
 ### 3. Install frontend dependencies
 
 ```bash

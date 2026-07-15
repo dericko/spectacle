@@ -1,13 +1,14 @@
 import asyncio
 import json
 import os
+import secrets
 from pathlib import Path
 import mimetypes
 
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -18,10 +19,36 @@ from spectacle_core.artifacts import LocalFileArtifactStore
 from spectacle_core.edit_assistant import propose_edit
 from spectacle_core.models import SceneGraph, Script
 
-app = FastAPI()
+_API_KEY_ENV = "SPECTACLE_API_KEY"
+
+
+def require_api_key(
+    authorization: str | None = Header(default=None),
+    api_key: str | None = Query(default=None),
+) -> None:
+    """Every route depends on this. CORS alone does not stop direct HTTP
+    clients (curl, another host on the network) from reaching these
+    endpoints, so a shared bearer token is required. `api_key` query-param
+    support exists because EventSource (used by /runs/{id}/stream) cannot
+    set custom request headers."""
+    expected = os.environ.get(_API_KEY_ENV)
+    if not expected:
+        raise HTTPException(status_code=500, detail=f"{_API_KEY_ENV} is not configured")
+
+    token = api_key
+    if token is None and authorization is not None:
+        scheme, _, value = authorization.partition(" ")
+        if scheme.lower() == "bearer":
+            token = value
+
+    if not token or not secrets.compare_digest(token, expected):
+        raise HTTPException(status_code=401, detail="unauthorized")
+
+
+app = FastAPI(dependencies=[Depends(require_api_key)])
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origin_regex=r"^http://localhost:\d+$",
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -67,15 +94,19 @@ def get_run_artifacts(run_id: str) -> list[dict]:
 @app.get("/artifacts/{content_hash}")
 def get_artifact(content_hash: str) -> dict:
     store = LocalFileArtifactStore(run_manager.artifact_root)
-    if not store.exists(content_hash):
-        raise HTTPException(status_code=404, detail="artifact not found")
-    return store.get_json(content_hash)
+    try:
+        if not store.exists(content_hash):
+            raise HTTPException(status_code=404, detail="artifact not found")
+        return store.get_json(content_hash)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid path")
 
 @app.get("/api/artifacts/{content_hash}/{filename}")
 def get_any_artifact_file(content_hash: str, filename: str):
-    artifact_root = run_manager.artifact_root.resolve()
-    file_path = (artifact_root / content_hash / filename).resolve()
-    if not str(file_path).startswith(str(artifact_root) + os.sep):
+    store = LocalFileArtifactStore(run_manager.artifact_root)
+    try:
+        file_path = store.file_path(content_hash, filename)
+    except ValueError:
         raise HTTPException(status_code=400, detail="Invalid path")
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")

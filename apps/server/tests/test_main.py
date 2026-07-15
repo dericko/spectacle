@@ -1,6 +1,11 @@
 from fastapi.testclient import TestClient
 
-from server.main import app
+from server.main import app, require_api_key
+
+# Auth is exercised separately in test_require_api_key_* below; every other
+# test bypasses it via FastAPI's dependency-override mechanism so route
+# behavior stays decoupled from the auth layer's own configuration.
+app.dependency_overrides[require_api_key] = lambda: None
 
 client = TestClient(app)
 
@@ -56,3 +61,73 @@ def test_interrupt_resume_delegates_to_run_manager_same_as_resume():
         resp = client.post("/runs/run-1/interrupt/resume", json={"action": "approve"})
     mock_resume.assert_called_once_with("run-1", {"action": "approve"})
     assert resp.json() == {"status": "done"}
+
+
+def test_get_artifact_rejects_path_traversal_content_hash():
+    # %2e%2e survives client-side URL normalization (a bare ".." gets
+    # collapsed by httpx before the request is even sent), so this is what
+    # actually reaches the route handler's content_hash parameter.
+    resp = client.get("/artifacts/%2e%2e")
+    assert resp.status_code == 400
+
+
+def test_get_any_artifact_file_rejects_path_traversal_content_hash():
+    resp = client.get("/api/artifacts/%2e%2e/artifact.json")
+    assert resp.status_code == 400
+
+
+# --- require_api_key: exercised with the real dependency, not the override ---
+
+def _client_without_auth_override():
+    real_app = app
+    real_app.dependency_overrides.pop(require_api_key, None)
+    return TestClient(real_app)
+
+
+def test_require_api_key_rejects_request_when_key_not_configured(monkeypatch):
+    monkeypatch.delenv("SPECTACLE_API_KEY", raising=False)
+    try:
+        resp = _client_without_auth_override().get("/runs")
+        assert resp.status_code == 500
+    finally:
+        app.dependency_overrides[require_api_key] = lambda: None
+
+
+def test_require_api_key_rejects_missing_credentials(monkeypatch):
+    monkeypatch.setenv("SPECTACLE_API_KEY", "secret-token")
+    try:
+        resp = _client_without_auth_override().get("/runs")
+        assert resp.status_code == 401
+    finally:
+        app.dependency_overrides[require_api_key] = lambda: None
+
+
+def test_require_api_key_rejects_wrong_bearer_token(monkeypatch):
+    monkeypatch.setenv("SPECTACLE_API_KEY", "secret-token")
+    try:
+        resp = _client_without_auth_override().get(
+            "/runs", headers={"authorization": "Bearer wrong-token"},
+        )
+        assert resp.status_code == 401
+    finally:
+        app.dependency_overrides[require_api_key] = lambda: None
+
+
+def test_require_api_key_accepts_correct_bearer_token(monkeypatch):
+    monkeypatch.setenv("SPECTACLE_API_KEY", "secret-token")
+    try:
+        resp = _client_without_auth_override().get(
+            "/runs", headers={"authorization": "Bearer secret-token"},
+        )
+        assert resp.status_code == 200
+    finally:
+        app.dependency_overrides[require_api_key] = lambda: None
+
+
+def test_require_api_key_accepts_correct_query_param_token_for_sse(monkeypatch):
+    monkeypatch.setenv("SPECTACLE_API_KEY", "secret-token")
+    try:
+        resp = _client_without_auth_override().get("/runs?api_key=secret-token")
+        assert resp.status_code == 200
+    finally:
+        app.dependency_overrides[require_api_key] = lambda: None
