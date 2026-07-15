@@ -30,6 +30,10 @@ from spectacle_core.graph import build_graph
 from spectacle_core.nodes.script_agent import default_script_llm
 from spectacle_core.tts import MacSayTTSProvider
 from spectacle_education import education_pack
+from spectacle_education.structure_agent import (
+    default_content_hint_llm,
+    default_guided_practice_expression_llm,
+)
 
 
 class RunManager:
@@ -58,8 +62,8 @@ class RunManager:
                 guided_practice_fn = stub_guided_practice_expression
             else:
                 script_fn = default_script_llm
-                content_hint_fn = None
-                guided_practice_fn = None
+                content_hint_fn = default_content_hint_llm
+                guided_practice_fn = default_guided_practice_expression_llm
 
             store = LocalFileArtifactStore(self.artifact_root)
             with PostgresSaver.from_conn_string(self.pg_conn) as checkpointer:

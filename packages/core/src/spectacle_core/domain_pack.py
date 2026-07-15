@@ -2,6 +2,8 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel
 
+from spectacle_core.hashing import content_hash
+
 
 class SafetyProfile(BaseModel):
     disallowed_topics: list[str]
@@ -21,6 +23,9 @@ class ContentTree(BaseModel):
     spec_hash: str
     scenes: list[SceneStub]
     schema_version: str = "1"
+
+    def compute_hash(self) -> str:
+        return content_hash(self.model_dump(mode="json"))
 
 
 class VerificationOutcome(BaseModel):

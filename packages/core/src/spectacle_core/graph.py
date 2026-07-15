@@ -8,6 +8,7 @@ from spectacle_core.artifacts import ArtifactStore
 from spectacle_core.domain_pack import ContentTree, DomainPack
 from spectacle_core.hashing import content_hash
 from spectacle_core.models import FinalManifest, SceneGraph, Script
+from spectacle_core.node_cache import cached_or_compute, node_input_key
 from spectacle_core.nodes.finalize import collect_scenes, mux_final
 from spectacle_core.nodes.interrupts import interrupt_review
 from spectacle_core.nodes.render_scene import fan_out_scenes, render_scene
@@ -55,16 +56,23 @@ def build_graph(
             kwargs["content_hint_fn"] = content_hint_fn
         if guided_practice_expression_fn is not None:
             kwargs["guided_practice_expression_fn"] = guided_practice_expression_fn
-        tree: ContentTree = domain_pack.structure(spec, **kwargs)
-        tree_hash = content_hash(tree.model_dump(mode="json"))
-        store.put_json(tree_hash, tree.model_dump(mode="json"))
-        record(tree_hash, "content_tree")
+        spec_hash = content_hash(spec.model_dump(mode="json"))
+        content_hint_fp = getattr(content_hint_fn, "fingerprint", "structure@stub")
+        guided_practice_fp = getattr(guided_practice_expression_fn, "fingerprint", "structure@stub")
+        structure_fingerprint = f"{content_hint_fp}+{guided_practice_fp}"
+        key = node_input_key(spec_hash, structure_fingerprint)
+        tree: ContentTree = cached_or_compute(
+            store, key, lambda: domain_pack.structure(spec, **kwargs), ContentTree)
+        record(tree.compute_hash(), "content_tree")
         return {"content_tree": tree.model_dump(mode="json")}
 
     def script_agent_node(state: GraphState) -> dict:
         tree = ContentTree.model_validate(state["content_tree"])
-        script = run_script_agent(tree, llm_fn=script_llm_fn)
-        store.put_json(script.compute_hash(), script.model_dump(mode="json"))
+        tree_hash = tree.compute_hash()
+        fingerprint = getattr(script_llm_fn, "fingerprint", "script_agent@stub")
+        key = node_input_key(tree_hash, fingerprint)
+        script = cached_or_compute(
+            store, key, lambda: run_script_agent(tree, llm_fn=script_llm_fn), Script)
         record(script.compute_hash(), "script")
         return {"script": script.model_dump(mode="json")}
 
