@@ -78,17 +78,20 @@ def build_graph(
         record(script.compute_hash(), "script")
         return {"script": script.model_dump(mode="json")}
 
-    def safety_gate_node(state: GraphState) -> dict:
-        script = Script.model_validate(state["script"])
-        run_safety_gate(script, domain_pack.safety_profile, safety_llm_fn=safety_llm_fn)
-        return {}
-
     def script_review_node(state: GraphState) -> dict:
         script = Script.model_validate(state["script"])
         reviewed = interrupt_review(script, Script, state["run_mode"])
         store.put_json(reviewed.compute_hash(), reviewed.model_dump(mode="json"))
         record(reviewed.compute_hash(), "script")
         return {"script": reviewed.model_dump(mode="json")}
+
+    def safety_gate_node(state: GraphState) -> dict:
+        # Runs AFTER script_review so it screens the actual text that will be
+        # rendered, including any human edits made during review -- screening
+        # only the pre-review draft would let an edit bypass the gate.
+        script = Script.model_validate(state["script"])
+        run_safety_gate(script, domain_pack.safety_profile, safety_llm_fn=safety_llm_fn)
+        return {}
 
     def scene_planner_node(state: GraphState) -> dict:
         script = Script.model_validate(state["script"])
@@ -143,8 +146,8 @@ def build_graph(
     builder = StateGraph(GraphState)
     builder.add_node("structure", load_spec_and_structure)
     builder.add_node("script_agent", script_agent_node)
-    builder.add_node("safety_gate", safety_gate_node)
     builder.add_node("script_review", script_review_node)
+    builder.add_node("safety_gate", safety_gate_node)
     builder.add_node("scene_planner", scene_planner_node)
     builder.add_node("scene_graph_review", scene_graph_review_node)
     builder.add_node("verification_gate", verification_gate_node)
@@ -154,9 +157,9 @@ def build_graph(
 
     builder.set_entry_point("structure")
     builder.add_edge("structure", "script_agent")
-    builder.add_edge("script_agent", "safety_gate")
-    builder.add_edge("safety_gate", "script_review")
-    builder.add_edge("script_review", "scene_planner")
+    builder.add_edge("script_agent", "script_review")
+    builder.add_edge("script_review", "safety_gate")
+    builder.add_edge("safety_gate", "scene_planner")
     builder.add_edge("scene_planner", "scene_graph_review")
     builder.add_edge("scene_graph_review", "verification_gate")
     builder.add_conditional_edges("verification_gate", fan_out, ["render_scene"])
