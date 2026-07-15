@@ -59,3 +59,22 @@ def test_scene_graph_entry_hash_unaffected_by_scene_id():
     b = SceneGraphEntry(scene_id="b", renderer="remotion", narration_text="hi",
                           on_screen_text="Hi!", target_duration_s=20.0, verify=False)
     assert a.scene_input_hash() == b.scene_input_hash()
+
+
+def _entry(**kw):
+    base = dict(scene_id="worked_example_1", renderer="manim", narration_text="n",
+                on_screen_text="3/4+1/8", target_duration_s=45.0, verify=True,
+                expression="3/4 + 1/8", stated_answer="7/8", render_params={})
+    base.update(kw); return SceneGraphEntry(**base)
+
+
+def test_audio_hash_depends_on_narration_and_voice():
+    e = _entry()
+    assert e.audio_input_hash("v1") != e.audio_input_hash("v2")
+    assert _entry(narration_text="a").audio_input_hash("v1") != _entry(narration_text="b").audio_input_hash("v1")
+
+
+def test_video_hash_excludes_voice_but_includes_duration_and_visuals():
+    e = _entry()
+    assert e.video_input_hash(45000) != e.video_input_hash(46000)
+    assert _entry(expression="1/2 + 1/4").video_input_hash(45000) != e.video_input_hash(45000)

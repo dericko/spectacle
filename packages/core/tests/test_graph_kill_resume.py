@@ -20,6 +20,9 @@ def _fake_llm(stub):
 
 
 class _FakeTTS:
+    def identity(self) -> str:
+        return "fake:default"
+
     def synthesize(self, text, out_path):
         out_path.write_bytes(b"fake audio")
         return 5.0

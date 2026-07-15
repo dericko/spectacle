@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Callable
 
 from spectacle_core.artifacts import ArtifactStore
+from spectacle_core.hashing import content_hash
 from spectacle_core.models import SceneFinal, SceneGraph, SceneGraphEntry
 from spectacle_core.renderers.manim_render import render_manim
 from spectacle_core.renderers.remotion_render import render_remotion
@@ -77,53 +78,67 @@ def render_scene(
     on_artifact: OnArtifactFn | None = None,
 ) -> SceneFinal:
     entry = SceneGraphEntry.model_validate(payload["scene"])
-    scene_hash = entry.scene_input_hash()
 
-    def notify(stage: str) -> None:
+    def notify(stage: str, content_hash_value: str) -> None:
         if on_artifact is not None:
-            on_artifact(scene_hash, stage)
+            on_artifact(content_hash_value, stage)
 
-    if store.file_exists(scene_hash, "scene_final.mp4"):
-        notify("scene_final")
-        return SceneFinal(
-            scene_id=entry.scene_id,
-            scene_input_hash=scene_hash,
-            output_path=str(store.file_path(scene_hash, "scene_final.mp4")),
-        )
-
-    audio_path = store.file_path(scene_hash, "narration.wav")
-    audio_path.parent.mkdir(parents=True, exist_ok=True)
-    duration_s = tts_provider.synthesize(entry.narration_text, audio_path)
-    notify("narration_clip")
-
-    video_path = store.file_path(scene_hash, "final.mp4")
-    if entry.renderer == "manim":
-        render_params = dict(entry.render_params)
-        render_params.setdefault("sceneType", entry.scene_id)
-        steps = render_params.get("steps")
-        if steps:
-            render_params["stepStartTimesS"] = compute_item_start_times(
-                entry.narration_text, len(steps), duration_s,
-            )
-        preview_path = store.file_path(scene_hash, "preview.mp4")
-        render_manim(entry.expression, entry.stated_answer, duration_s, preview_path,
-                     quality="preview", render_params=render_params)
-        notify("scene_preview")
-        render_manim(entry.expression, entry.stated_answer, duration_s, video_path,
-                     quality="final", render_params=render_params)
+    # --- audio key: narration text + voice identity ---
+    audio_key = entry.audio_input_hash(tts_provider.identity())
+    audio_path = store.file_path(audio_key, "narration.wav")
+    if store.file_exists(audio_key, "narration.wav") and store.exists(audio_key):
+        duration_s = store.get_json(audio_key)["duration_s"]
     else:
-        render_params = dict(entry.render_params)
-        render_params.setdefault("sceneType", entry.scene_id)
-        items = render_params.get("items")
-        if items:
-            render_params["itemStartTimesS"] = compute_item_start_times(
-                entry.narration_text, len(items), duration_s,
-            )
-        render_remotion(entry.narration_text, entry.on_screen_text, duration_s, video_path,
-                        render_params=render_params)
+        audio_path.parent.mkdir(parents=True, exist_ok=True)
+        duration_s = tts_provider.synthesize(entry.narration_text, audio_path)
+        store.put_json(audio_key, {"duration_s": duration_s})
+    notify("narration_clip", audio_key)
 
-    final_path = store.file_path(scene_hash, "scene_final.mp4")
+    # --- video key: everything that drives the silent instructional video,
+    # keyed on the synthesized duration (NOT voice) so a voice change alone
+    # never invalidates the deterministic video render. ---
+    duration_ms = round(duration_s * 1000)
+    video_key = entry.video_input_hash(duration_ms)
+    video_path = store.file_path(video_key, "video.mp4")
+    if store.file_exists(video_key, "video.mp4"):
+        if entry.renderer == "manim":
+            notify("scene_preview", video_key)
+    else:
+        video_path.parent.mkdir(parents=True, exist_ok=True)
+        if entry.renderer == "manim":
+            render_params = dict(entry.render_params)
+            render_params.setdefault("sceneType", entry.scene_id)
+            steps = render_params.get("steps")
+            if steps:
+                render_params["stepStartTimesS"] = compute_item_start_times(
+                    entry.narration_text, len(steps), duration_s,
+                )
+            preview_path = store.file_path(video_key, "preview.mp4")
+            render_manim(entry.expression, entry.stated_answer, duration_s, preview_path,
+                         quality="preview", render_params=render_params)
+            notify("scene_preview", video_key)
+            render_manim(entry.expression, entry.stated_answer, duration_s, video_path,
+                         quality="final", render_params=render_params)
+        else:
+            render_params = dict(entry.render_params)
+            render_params.setdefault("sceneType", entry.scene_id)
+            items = render_params.get("items")
+            if items:
+                render_params["itemStartTimesS"] = compute_item_start_times(
+                    entry.narration_text, len(items), duration_s,
+                )
+            render_remotion(entry.narration_text, entry.on_screen_text, duration_s, video_path,
+                            render_params=render_params)
+
+    # --- final key: mux of this audio + this video ---
+    final_key = content_hash({"kind": "final", "audio": audio_key, "video": video_key})
+    final_path = store.file_path(final_key, "scene_final.mp4")
+    if store.file_exists(final_key, "scene_final.mp4"):
+        notify("scene_final", final_key)
+        return SceneFinal(scene_id=entry.scene_id, scene_input_hash=final_key, output_path=str(final_path))
+
+    final_path.parent.mkdir(parents=True, exist_ok=True)
     mux_audio_video(video_path, audio_path, final_path)
-    notify("scene_final")
+    notify("scene_final", final_key)
 
-    return SceneFinal(scene_id=entry.scene_id, scene_input_hash=scene_hash, output_path=str(final_path))
+    return SceneFinal(scene_id=entry.scene_id, scene_input_hash=final_key, output_path=str(final_path))

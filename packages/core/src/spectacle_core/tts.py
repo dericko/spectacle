@@ -5,9 +5,13 @@ from typing import Protocol
 
 class TTSProvider(Protocol):
     def synthesize(self, text: str, out_path: Path) -> float: ...
+    def identity(self) -> str: ...
 
 
 class MacSayTTSProvider:
+    def identity(self) -> str:
+        return "macsay:default"
+
     def synthesize(self, text: str, out_path: Path) -> float:
         aiff_path = out_path.with_suffix(".aiff")
         subprocess.run(["say", "-o", str(aiff_path), text], check=True)

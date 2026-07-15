@@ -51,6 +51,18 @@ class SceneGraphEntry(BaseModel):
             "stated_answer": self.stated_answer,
         })
 
+    def audio_input_hash(self, voice_identity: str) -> str:
+        return content_hash({"kind": "audio", "narration_text": self.narration_text,
+                             "voice": voice_identity})
+
+    def video_input_hash(self, duration_ms: int) -> str:
+        return content_hash({"kind": "video", "renderer": self.renderer,
+                             "on_screen_text": self.on_screen_text,
+                             "render_params": self.render_params,
+                             "expression": self.expression,
+                             "stated_answer": self.stated_answer,
+                             "duration_ms": duration_ms})
+
 
 class SceneGraph(VersionedArtifact):
     node_version: str = "scene_planner@1"
