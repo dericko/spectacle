@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Annotated, Callable, Literal, TypedDict
 
 from langgraph.graph import END, StateGraph
-from langgraph.types import Send
+from langgraph.types import Send, interrupt
 
 from spectacle_core.artifacts import ArtifactStore
 from spectacle_core.domain_pack import ContentTree, DomainPack
@@ -11,6 +11,7 @@ from spectacle_core.models import FinalManifest, SceneGraph, Script
 from spectacle_core.node_cache import cached_or_compute, node_input_key
 from spectacle_core.nodes.finalize import collect_scenes, mux_final
 from spectacle_core.nodes.interrupts import interrupt_review
+from spectacle_core.nodes.plan_gate import check_plan_confirmed
 from spectacle_core.nodes.render_scene import fan_out_scenes, render_scene
 from spectacle_core.nodes.safety_gate import default_safety_llm, run_safety_gate
 from spectacle_core.nodes.scene_planner import run_scene_planner
@@ -26,8 +27,11 @@ def _merge_dicts(a: dict, b: dict) -> dict:
 
 
 class GraphState(TypedDict):
-    spec: dict
+    raw_input: str
+    prior_chat: list[dict]
     run_mode: Literal["accept_edits", "auto"]
+    lesson_plan: dict | None
+    clarifying_questions: list[str]
     content_tree: dict | None
     script: dict | None
     scene_graph: dict | None
@@ -42,8 +46,7 @@ def build_graph(
     tts_provider: TTSProvider,
     checkpointer,
     script_llm_fn=default_script_llm,
-    content_hint_fn=None,
-    guided_practice_expression_fn=None,
+    intake_llm_fn=None,
     safety_llm_fn=default_safety_llm,
     metadata_recorder: MetadataRecorderFn | None = None,
 ):
@@ -51,20 +54,54 @@ def build_graph(
         if metadata_recorder is not None:
             metadata_recorder(content_hash_value, stage, scene_id)
 
-    def load_spec_and_structure(state: GraphState) -> dict:
-        spec = domain_pack.spec_schema.model_validate(state["spec"])
-        kwargs = {}
-        if content_hint_fn is not None:
-            kwargs["content_hint_fn"] = content_hint_fn
-        if guided_practice_expression_fn is not None:
-            kwargs["guided_practice_expression_fn"] = guided_practice_expression_fn
-        spec_hash = content_hash(spec.model_dump(mode="json"))
-        content_hint_fp = getattr(content_hint_fn, "fingerprint", "structure@stub")
-        guided_practice_fp = getattr(guided_practice_expression_fn, "fingerprint", "structure@stub")
-        structure_fingerprint = f"{content_hint_fp}+{guided_practice_fp}"
-        key = node_input_key(spec_hash, structure_fingerprint)
-        tree: ContentTree = cached_or_compute(
-            store, key, lambda: domain_pack.structure(spec, **kwargs), ContentTree)
+    def intake_node(state: GraphState) -> dict:
+        raw_input = state["raw_input"]
+        prior_chat = state.get("prior_chat", [])
+        fingerprint = getattr(intake_llm_fn, "fingerprint", "intake@stub")
+        upstream_hash = content_hash({"raw_input": raw_input, "prior_chat": prior_chat})
+        key = node_input_key(upstream_hash, fingerprint)
+        if store.exists(key):
+            output_hash = store.get_json(key)["output_hash"]
+            plan_dict = store.get_json(output_hash)
+            record(output_hash, "lesson_plan")
+            return {"lesson_plan": plan_dict, "clarifying_questions": []}
+        kwargs = {"llm_fn": intake_llm_fn} if intake_llm_fn is not None else {}
+        result = domain_pack.intake(raw_input, prior_chat, **kwargs)
+        if result.plan is not None:
+            plan_dict = result.plan.model_dump(mode="json")
+            output_hash = result.plan.compute_hash()
+            store.put_json(output_hash, plan_dict)
+            store.put_json(key, {"output_hash": output_hash})
+            record(output_hash, "lesson_plan")
+            return {"lesson_plan": plan_dict, "clarifying_questions": []}
+        return {"lesson_plan": None, "clarifying_questions": result.clarifying_questions}
+
+    def intake_routing(state: GraphState) -> str:
+        return "clarify" if state.get("clarifying_questions") else "plan_review"
+
+    def clarify_node(state: GraphState) -> dict:
+        decision = interrupt({"clarifying_questions": state["clarifying_questions"]})
+        answer = decision.get("answer", "")
+        prior_chat = state.get("prior_chat", []) + [
+            {"role": "assistant", "content": "\n".join(state["clarifying_questions"])},
+            {"role": "user", "content": answer},
+        ]
+        return {"prior_chat": prior_chat}
+
+    def plan_review_node(state: GraphState) -> dict:
+        plan = domain_pack.spec_schema.model_validate(state["lesson_plan"])
+        reviewed = interrupt_review(plan, domain_pack.spec_schema, state["run_mode"])
+        store.put_json(reviewed.compute_hash(), reviewed.model_dump(mode="json"))
+        record(reviewed.compute_hash(), "lesson_plan")
+        return {"lesson_plan": reviewed.model_dump(mode="json")}
+
+    def plan_gate_node(state: GraphState) -> dict:
+        check_plan_confirmed(state["lesson_plan"]["scenes"])
+        return {}
+
+    def structure_node(state: GraphState) -> dict:
+        plan = domain_pack.spec_schema.model_validate(state["lesson_plan"])
+        tree = domain_pack.structure(plan)
         record(tree.compute_hash(), "content_tree")
         return {"content_tree": tree.model_dump(mode="json")}
 
@@ -144,7 +181,11 @@ def build_graph(
         return {"final_manifest": manifest_data}
 
     builder = StateGraph(GraphState)
-    builder.add_node("structure", load_spec_and_structure)
+    builder.add_node("intake", intake_node)
+    builder.add_node("clarify", clarify_node)
+    builder.add_node("plan_review", plan_review_node)
+    builder.add_node("plan_gate", plan_gate_node)
+    builder.add_node("structure", structure_node)
     builder.add_node("script_agent", script_agent_node)
     builder.add_node("script_review", script_review_node)
     builder.add_node("safety_gate", safety_gate_node)
@@ -155,7 +196,11 @@ def build_graph(
     builder.add_node("collect_scenes", collect_scenes_node)
     builder.add_node("mux_final", mux_final_node)
 
-    builder.set_entry_point("structure")
+    builder.set_entry_point("intake")
+    builder.add_conditional_edges("intake", intake_routing, ["clarify", "plan_review"])
+    builder.add_edge("clarify", "intake")
+    builder.add_edge("plan_review", "plan_gate")
+    builder.add_edge("plan_gate", "structure")
     builder.add_edge("structure", "script_agent")
     builder.add_edge("script_agent", "script_review")
     builder.add_edge("script_review", "safety_gate")
