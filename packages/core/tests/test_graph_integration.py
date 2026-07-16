@@ -283,6 +283,163 @@ def test_clarify_loop_collects_answer_and_resumes_intake(tmp_path):
     assert final_result["final_manifest"] is not None
 
 
+def test_verify_scene_expression_is_identical_between_renderer_and_gate(tmp_path):
+    store = LocalFileArtifactStore(tmp_path)
+    checkpointer = MemorySaver()
+    expr = "3/4 + 1/8"
+
+    def intake_llm_with_verify_scene(raw_input, prior_chat):
+        plan = _ready_plan_dict(scenes=[{
+            "scene_id": "worked_example_1",
+            "type": "worked_example",
+            "render_hint": "equation_morph",
+            "content": "solve 3/4 + 1/8",
+            "verify": True,
+            "expression": expr,
+            "source": "author",  # confirmed=True by default, passes plan_gate
+        }])
+        return {"plan": plan, "questions": []}
+    intake_llm_with_verify_scene.fingerprint = "intake@test-a1"
+
+    graph = build_graph(
+        domain_pack=education_pack, store=store, tts_provider=_FakeTTS(), checkpointer=checkpointer,
+        script_llm_fn=_fake_llm,
+        intake_llm_fn=intake_llm_with_verify_scene,
+        safety_llm_fn=lambda text, topics: [],
+    )
+    config = {"configurable": {"thread_id": "test-a1-expression"}}
+
+    gate_expressions: list[str | None] = []
+    renderer_expressions: list[str | None] = []
+
+    from spectacle_education import verification as verification_module
+    real_gate = verification_module.sympy_equivalence_gate
+
+    def spy_gate(scene):
+        gate_expressions.append(scene.expression)
+        return real_gate(scene)
+
+    with patch("spectacle_education.verification.sympy_equivalence_gate", side_effect=spy_gate), \
+         patch("spectacle_core.nodes.render_scene.render_remotion") as mock_remotion, \
+         patch("spectacle_core.nodes.render_scene.render_manim") as mock_manim, \
+         patch("spectacle_core.nodes.render_scene.mux_audio_video") as mock_av_mux, \
+         patch("spectacle_core.nodes.finalize.ffmpeg_concat") as mock_concat:
+
+        def fake_remotion(narration_text, on_screen_text, duration_s, output_path, render_params=None):
+            output_path.write_bytes(b"v")
+        mock_remotion.side_effect = fake_remotion
+
+        def fake_manim(expression, stated_answer, duration_s, output_path, quality, render_params=None):
+            renderer_expressions.append(expression)
+            output_path.write_bytes(b"v")
+        mock_manim.side_effect = fake_manim
+
+        def fake_mux(video_path, audio_path, output_path):
+            output_path.write_bytes(b"f")
+        mock_av_mux.side_effect = fake_mux
+
+        def fake_concat(inputs, output_path):
+            output_path.write_bytes(b"final")
+        mock_concat.side_effect = fake_concat
+
+        result = graph.invoke({
+            "raw_input": "add fractions lesson for 6th grade",
+            "prior_chat": [],
+            "run_mode": "auto",
+        }, config=config)
+
+    assert result["final_manifest"] is not None
+    assert gate_expressions, "gate was never invoked"
+    assert renderer_expressions, "renderer was never invoked"
+    # render_manim is called twice (preview + final quality) with the same expr.
+    assert set(renderer_expressions) == {expr}
+    assert gate_expressions == [expr]
+    # Byte-identical: same string object provenance (both traced from the one
+    # SceneSpec.expression field), not merely equal by coincidence.
+    assert gate_expressions[0] == renderer_expressions[0] == expr
+
+
+def test_explicit_four_scene_plan_preserves_order_and_shape_end_to_end(tmp_path):
+    store = LocalFileArtifactStore(tmp_path)
+    checkpointer = MemorySaver()
+    scene_ids = ["intro_1", "concept_explanation_1", "worked_example_1", "recap_1"]
+
+    def intake_llm_with_four_scenes(raw_input, prior_chat):
+        plan = _ready_plan_dict(scenes=[
+            {
+                "scene_id": "intro_1",
+                "type": "intro",
+                "render_hint": "layout",
+                "content": "welcome to the lesson",
+                "verify": False,
+            },
+            {
+                "scene_id": "concept_explanation_1",
+                "type": "concept_explanation",
+                "render_hint": "layout",
+                "content": "explain adding fractions with unlike denominators",
+                "verify": False,
+            },
+            {
+                "scene_id": "worked_example_1",
+                "type": "worked_example",
+                "render_hint": "equation_morph",
+                "content": "solve 3/4 + 1/8",
+                "verify": True,
+                "expression": "3/4 + 1/8",
+                "source": "author",  # confirmed=True, passes plan_gate without review
+            },
+            {
+                "scene_id": "recap_1",
+                "type": "recap",
+                "render_hint": "layout",
+                "content": "recap what we learned",
+                "verify": False,
+            },
+        ])
+        return {"plan": plan, "questions": []}
+    intake_llm_with_four_scenes.fingerprint = "intake@test-a7"
+
+    graph = build_graph(
+        domain_pack=education_pack, store=store, tts_provider=_FakeTTS(), checkpointer=checkpointer,
+        script_llm_fn=_fake_llm,
+        intake_llm_fn=intake_llm_with_four_scenes,
+        safety_llm_fn=lambda text, topics: [],
+    )
+    config = {"configurable": {"thread_id": "test-a7-explicit-scenes"}}
+
+    with patch("spectacle_core.nodes.render_scene.render_remotion") as mock_remotion, \
+         patch("spectacle_core.nodes.render_scene.render_manim") as mock_manim, \
+         patch("spectacle_core.nodes.render_scene.mux_audio_video") as mock_av_mux, \
+         patch("spectacle_core.nodes.finalize.ffmpeg_concat") as mock_concat:
+
+        def fake_remotion(narration_text, on_screen_text, duration_s, output_path, render_params=None):
+            output_path.write_bytes(b"v")
+        mock_remotion.side_effect = fake_remotion
+
+        def fake_manim(expression, stated_answer, duration_s, output_path, quality, render_params=None):
+            output_path.write_bytes(b"v")
+        mock_manim.side_effect = fake_manim
+
+        def fake_mux(video_path, audio_path, output_path):
+            output_path.write_bytes(b"f")
+        mock_av_mux.side_effect = fake_mux
+
+        def fake_concat(inputs, output_path):
+            output_path.write_bytes(b"final")
+        mock_concat.side_effect = fake_concat
+
+        result = graph.invoke({
+            "raw_input": "add fractions lesson for 6th grade",
+            "prior_chat": [],
+            "run_mode": "auto",
+        }, config=config)
+
+    assert result["final_manifest"] is not None
+    scene_graph = result["scene_graph"]
+    assert [s["scene_id"] for s in scene_graph["scenes"]] == scene_ids
+
+
 def test_run_with_disallowed_topic_in_script_is_blocked_before_render(tmp_path):
     store = LocalFileArtifactStore(tmp_path)
     checkpointer = MemorySaver()
