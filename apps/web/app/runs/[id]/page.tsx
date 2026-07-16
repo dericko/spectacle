@@ -27,12 +27,20 @@ export default function RunPage({ params }: { params: { id: string } }) {
 
   const result = status?.result as Record<string, unknown> | undefined;
   const interrupted = Boolean(result?.__interrupt__);
-  // Scene graph review comes after script review; detect by whether scene_graph is in state.
-  const interruptType = interrupted && result?.scene_graph ? "SceneGraph" : "Script";
-  const interruptArtifact =
-    (interruptType === "SceneGraph"
+  // Interrupt sequence (accept_edits mode): plan_review -> script_review -> scene_graph_review.
+  // State accumulates fields as the run progresses, so detect the most-downstream artifact first.
+  const interruptType: "SceneGraph" | "Script" | "LessonPlan" = result?.scene_graph
+    ? "SceneGraph"
+    : result?.script
+      ? "Script"
+      : "LessonPlan";
+  const interruptArtifact = (
+    interruptType === "SceneGraph"
       ? result?.scene_graph
-      : result?.script) as Record<string, unknown> | undefined;
+      : interruptType === "Script"
+        ? result?.script
+        : result?.lesson_plan
+  ) as Record<string, unknown> | undefined;
 
   const shortId = params.id.length > 8 ? `${params.id.slice(0, 8)}…` : params.id;
 

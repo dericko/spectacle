@@ -18,6 +18,7 @@ from server.run_manager import RunManager
 from spectacle_core.artifacts import LocalFileArtifactStore
 from spectacle_core.edit_assistant import propose_edit
 from spectacle_core.models import SceneGraph, Script
+from spectacle_education.lesson_plan import LessonPlan
 
 _API_KEY_ENV = "SPECTACLE_API_KEY"
 
@@ -130,7 +131,7 @@ def post_resume(run_id: str, payload: dict) -> dict:
     return run_manager.resume_run(run_id, payload)
 
 
-_ARTIFACT_TYPES = {"Script": Script, "SceneGraph": SceneGraph}
+_ARTIFACT_TYPES = {"Script": Script, "SceneGraph": SceneGraph, "LessonPlan": LessonPlan}
 
 
 def _anthropic_edit_llm(artifact_type, current_artifact: dict, chat_message: str, history: list[dict]) -> dict:

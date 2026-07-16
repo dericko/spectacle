@@ -16,11 +16,9 @@ const PIPELINE_STAGES = [
 
 export default function StartRunPage() {
   const router = useRouter();
-  const [learningObjective, setLearningObjective] = useState(
-    "Add fractions with unlike denominators"
+  const [rawInput, setRawInput] = useState(
+    "Teach a 6th grade class how to add fractions with unlike denominators, using 3/4 + 1/8 as a worked example. Keep it to about 3 minutes."
   );
-  const [expression, setExpression] = useState("3/4 + 1/8");
-  const [minutes, setMinutes] = useState(3);
   const [runMode, setRunMode] = useState<RunMode>("accept_edits");
   const [stubLlm, setStubLlm] = useState(false);
   const [isDebug, setIsDebug] = useState(false);
@@ -36,16 +34,7 @@ export default function StartRunPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const { run_id } = await startRun(
-        {
-          learning_objective: learningObjective,
-          worked_example_expression: expression,
-          target_duration_minutes: minutes,
-          audience: "6th grade",
-        },
-        runMode,
-        stubLlm,
-      );
+      const { run_id } = await startRun(rawInput, runMode, stubLlm);
       router.push(`/runs/${run_id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to start run.");
@@ -100,46 +89,18 @@ export default function StartRunPage() {
                 style={{ display: "flex", flexDirection: "column", gap: 22 }}
               >
                 <div className="field">
-                  <label className="field-label" htmlFor="objective">
-                    Learning objective
+                  <label className="field-label" htmlFor="raw-input">
+                    Describe the lesson
                   </label>
-                  <input
-                    id="objective"
+                  <textarea
+                    id="raw-input"
                     className="field-input"
-                    value={learningObjective}
-                    onChange={(e) => setLearningObjective(e.target.value)}
-                    placeholder="e.g. Add fractions with unlike denominators"
+                    value={rawInput}
+                    onChange={(e) => setRawInput(e.target.value)}
+                    placeholder="e.g. Teach a 6th grade class how to add fractions with unlike denominators, using 3/4 + 1/8 as a worked example. Keep it to about 3 minutes."
+                    rows={6}
+                    style={{ resize: "vertical", lineHeight: 1.55 }}
                     required
-                  />
-                </div>
-
-                <div className="field">
-                  <label className="field-label" htmlFor="expression">
-                    Worked example
-                  </label>
-                  <input
-                    id="expression"
-                    className="field-input field-input-mono"
-                    value={expression}
-                    onChange={(e) => setExpression(e.target.value)}
-                    placeholder="e.g. 3/4 + 1/8"
-                    required
-                  />
-                </div>
-
-                <div className="field">
-                  <label className="field-label" htmlFor="duration">
-                    Duration (minutes)
-                  </label>
-                  <input
-                    id="duration"
-                    className="field-input"
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={minutes}
-                    onChange={(e) => setMinutes(Number(e.target.value))}
-                    style={{ width: 100 }}
                   />
                 </div>
 

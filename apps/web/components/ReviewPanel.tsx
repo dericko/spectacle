@@ -12,7 +12,7 @@ export function ReviewPanel({
   currentArtifact,
 }: {
   runId: string;
-  artifactType: "Script" | "SceneGraph";
+  artifactType: "Script" | "SceneGraph" | "LessonPlan";
   currentArtifact: Record<string, unknown>;
 }) {
   // Panel visibility is driven by the parent (SSE stream) — no local dismiss needed.
@@ -173,7 +173,13 @@ export function ReviewPanel({
           Preview
         </p>
         <ArtifactPreview
-          stage={artifactType === "Script" ? "script" : "scene_graph"}
+          stage={
+            artifactType === "Script"
+              ? "script"
+              : artifactType === "SceneGraph"
+                ? "scene_graph"
+                : "lesson_plan"
+          }
           data={artifact}
         />
       </div>
