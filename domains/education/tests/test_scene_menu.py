@@ -1,4 +1,4 @@
-from spectacle_education.scene_menu import SCENE_MENU
+from spectacle_education.scene_menu import SCENE_MENU, budget_scenes
 
 
 def test_scene_menu_has_five_fixed_types():
@@ -19,17 +19,12 @@ def test_only_intro_and_recap_are_non_repeatable():
     assert non_repeatable == {"intro", "worked_example", "recap"}
 
 
-from spectacle_education.scene_menu import budget_scenes
-from spectacle_education.spec import EducationSpec
+_OBJECTIVE = "add fractions with unlike denominators"
+_WORKED_EXAMPLE_EXPRESSION = "3/4 + 1/8"
 
 
-def _spec(minutes: int) -> EducationSpec:
-    return EducationSpec(
-        learning_objective="add fractions with unlike denominators",
-        worked_example_expression="3/4 + 1/8",
-        target_duration_minutes=minutes,
-        audience="6th grade",
-    )
+def _budget(minutes: int):
+    return budget_scenes(_OBJECTIVE, _WORKED_EXAMPLE_EXPRESSION, minutes)
 
 
 def _type_names(scenes) -> list[str]:
@@ -37,12 +32,12 @@ def _type_names(scenes) -> list[str]:
 
 
 def test_one_minute_lesson_has_only_the_three_mandatory_scenes():
-    scenes = budget_scenes(_spec(1))
+    scenes = _budget(1)
     assert _type_names(scenes) == ["intro", "worked_example", "recap"]
 
 
 def test_ten_minute_lesson_stays_in_pedagogical_order_and_adds_fillers():
-    scenes = budget_scenes(_spec(10))
+    scenes = _budget(10)
     names = _type_names(scenes)
     assert names[0] == "intro"
     assert names[-1] == "recap"
@@ -57,14 +52,14 @@ def test_ten_minute_lesson_stays_in_pedagogical_order_and_adds_fillers():
 
 
 def test_ten_minute_lesson_total_duration_within_tolerance():
-    scenes = budget_scenes(_spec(10))
+    scenes = _budget(10)
     total_s = sum(s.target_duration_s for s in scenes)
     target_s = 10 * 60
     assert abs(total_s - target_s) <= 60
 
 
 def test_only_equation_morph_scenes_carry_verify_true():
-    scenes = budget_scenes(_spec(10))
+    scenes = _budget(10)
     for s in scenes:
         name = s.scene_id.rsplit("_", 1)[0]
         if name in ("worked_example", "guided_practice"):
@@ -75,9 +70,17 @@ def test_only_equation_morph_scenes_carry_verify_true():
             assert s.render_hint == "layout"
 
 
-def test_worked_example_expression_is_none_until_structure_fills_it_in():
-    # budget_scenes is deterministic and domain-agnostic about *which*
-    # expression to use -- structure() (Task 8) fills expression in.
-    scenes = budget_scenes(_spec(5))
+def test_worked_example_scene_carries_the_supplied_expression():
+    # budget_scenes now receives the worked-example expression directly
+    # (Task 4): the menu-fallback worked_example stub carries it so the
+    # thin-plan path in structure() doesn't need to post-process stubs.
+    scenes = _budget(5)
+    we = next(s for s in scenes if s.scene_id.startswith("worked_example"))
+    assert we.expression == _WORKED_EXAMPLE_EXPRESSION
+
+
+def test_non_worked_example_scenes_have_no_expression():
+    scenes = _budget(5)
     for s in scenes:
-        assert s.expression is None
+        if not s.scene_id.startswith("worked_example"):
+            assert s.expression is None

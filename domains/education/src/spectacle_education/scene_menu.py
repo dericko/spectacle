@@ -3,7 +3,6 @@ from typing import Literal
 from pydantic import BaseModel
 
 from spectacle_core.domain_pack import SceneStub
-from spectacle_education.spec import EducationSpec
 
 
 class SceneTypeDef(BaseModel):
@@ -37,7 +36,11 @@ _PEDAGOGICAL_ORDER = {
 }
 
 
-def budget_scenes(spec: EducationSpec) -> list[SceneStub]:
+def budget_scenes(
+    objective: str,
+    worked_example_expression: str | None,
+    target_duration_minutes: int,
+) -> list[SceneStub]:
     """Deterministic budgeting: pick a sequence and count of scenes from
     SCENE_MENU whose total duration approximates the requested target
     (soft target, +/- _TOLERANCE_S), rather than letting an LLM invent
@@ -45,23 +48,28 @@ def budget_scenes(spec: EducationSpec) -> list[SceneStub]:
     worked_example, recap) always appear; concept_explanation and
     guided_practice are added alternately to fill remaining budget."""
     menu = {d.name: d for d in SCENE_MENU}
-    target_s = spec.target_duration_minutes * 60
+    target_s = target_duration_minutes * 60
     counters: dict[str, int] = {}
     scenes: list[SceneStub] = []
 
-    def add(name: str) -> float:
+    def add(name: str, expression: str | None = None) -> float:
         defn = menu[name]
         counters[name] = counters.get(name, 0) + 1
         scenes.append(SceneStub(
             scene_id=f"{name}_{counters[name]}",
             render_hint=defn.render_hint,
-            content_hint=f"{name} scene for: {spec.learning_objective}",
+            content_hint=f"{name} scene for: {objective}",
             target_duration_s=defn.duration_s,
             verify=defn.verify,
+            expression=expression,
         ))
         return defn.duration_s
 
-    used_s = add("intro") + add("worked_example") + add("recap")
+    used_s = (
+        add("intro")
+        + add("worked_example", expression=worked_example_expression)
+        + add("recap")
+    )
 
     fillers = ["concept_explanation", "guided_practice"]
     filler_idx = 0
