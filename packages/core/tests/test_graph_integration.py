@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 import pytest
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import Command
 
 from spectacle_core.artifacts import LocalFileArtifactStore
 from spectacle_core.domain_pack import ContentTree, SceneStub
@@ -211,6 +212,75 @@ def test_unconfirmed_verify_scene_blocks_at_plan_gate(tmp_path):
 
     mock_remotion.assert_not_called()
     mock_manim.assert_not_called()
+
+
+def test_clarify_loop_collects_answer_and_resumes_intake(tmp_path):
+    store = LocalFileArtifactStore(tmp_path)
+    checkpointer = MemorySaver()
+    calls: list[list[dict]] = []
+
+    def stateful_intake_llm(raw_input, prior_chat):
+        calls.append(prior_chat)
+        if not prior_chat:
+            return {"plan": None, "questions": ["What grade level?"]}
+        return {"plan": _ready_plan_dict(), "questions": []}
+    stateful_intake_llm.fingerprint = "intake@test-clarify"
+
+    graph = build_graph(
+        domain_pack=education_pack, store=store, tts_provider=_FakeTTS(), checkpointer=checkpointer,
+        script_llm_fn=_fake_llm,
+        intake_llm_fn=stateful_intake_llm,
+        safety_llm_fn=lambda text, topics: [],
+    )
+    config = {"configurable": {"thread_id": "test-clarify-loop"}}
+
+    result = graph.invoke({
+        "raw_input": "add fractions lesson",
+        "prior_chat": [],
+        "run_mode": "auto",
+    }, config=config)
+
+    assert "__interrupt__" in result  # paused at clarify
+    interrupt_payload = result["__interrupt__"][0].value
+    assert interrupt_payload == {"clarifying_questions": ["What grade level?"]}
+    assert len(calls) == 1
+    assert calls[0] == []
+
+    with patch("spectacle_core.nodes.render_scene.render_remotion") as mock_remotion, \
+         patch("spectacle_core.nodes.render_scene.render_manim") as mock_manim, \
+         patch("spectacle_core.nodes.render_scene.mux_audio_video") as mock_av_mux, \
+         patch("spectacle_core.nodes.finalize.ffmpeg_concat") as mock_concat:
+
+        def fake_remotion(narration_text, on_screen_text, duration_s, output_path, render_params=None):
+            output_path.write_bytes(b"v")
+        mock_remotion.side_effect = fake_remotion
+
+        def fake_manim(expression, stated_answer, duration_s, output_path, quality, render_params=None):
+            output_path.write_bytes(b"v")
+        mock_manim.side_effect = fake_manim
+
+        def fake_mux(video_path, audio_path, output_path):
+            output_path.write_bytes(b"f")
+        mock_av_mux.side_effect = fake_mux
+
+        def fake_concat(inputs, output_path):
+            output_path.write_bytes(b"final")
+        mock_concat.side_effect = fake_concat
+
+        final_result = graph.invoke(Command(resume={"answer": "6th grade"}), config=config)
+
+    # intake was re-invoked a second time, now with the accumulated prior_chat
+    # from the clarify loop (assistant's questions, then the human's answer).
+    assert len(calls) == 2
+    assert calls[1] == [
+        {"role": "assistant", "content": "What grade level?"},
+        {"role": "user", "content": "6th grade"},
+    ]
+
+    # intake_routing correctly saw empty clarifying_questions on pass 2 and
+    # routed straight through to plan_review (auto mode = no further pause),
+    # so the run proceeds all the way to a final manifest.
+    assert final_result["final_manifest"] is not None
 
 
 def test_run_with_disallowed_topic_in_script_is_blocked_before_render(tmp_path):
