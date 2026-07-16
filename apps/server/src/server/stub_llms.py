@@ -20,6 +20,27 @@ from spectacle_core.domain_pack import SceneStub
 from spectacle_core.nodes.script_agent import ScriptLLMResponse
 
 
+# ── intake stub ────────────────────────────────────────────────────────────────
+
+def stub_intake_llm(raw_input: str, prior_chat: list[dict]) -> dict:
+    """Deterministic ready plan for stub runs -- skips the real intake LLM
+    entirely, going straight to a thin plan that structure()'s menu fallback
+    expands into scenes."""
+    return {
+        "plan": {
+            "objectives": ["add fractions with unlike denominators"],
+            "audience": "6th grade",
+            "worked_example_expression_hint": "3/4 + 1/8",
+            "total_duration_target_minutes": 1,
+            "scenes": [],
+        },
+        "questions": [],
+    }
+
+
+stub_intake_llm.fingerprint = "intake@stub-deterministic"
+
+
 # ── content_hint / guided_practice stubs ──────────────────────────────────────
 
 def stub_content_hint(spec, stub: SceneStub) -> str:

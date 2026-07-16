@@ -10,10 +10,10 @@ app.dependency_overrides[require_api_key] = lambda: None
 client = TestClient(app)
 
 
-def test_post_runs_returns_201_and_a_run_id():
+def test_post_runs_with_legacy_spec_returns_201_and_a_run_id():
     with __import__("unittest.mock", fromlist=["patch"]).patch(
         "server.main.run_manager.start_run", return_value="run-abc"
-    ):
+    ) as mock_start:
         resp = client.post("/runs", json={
             "spec": {"learning_objective": "add fractions", "worked_example_expression": "3/4 + 1/8",
                         "target_duration_minutes": 1, "audience": "6th grade"},
@@ -21,6 +21,41 @@ def test_post_runs_returns_201_and_a_run_id():
         })
     assert resp.status_code == 201
     assert resp.json()["run_id"] == "run-abc"
+    mock_start.assert_called_once()
+    args = mock_start.call_args.args
+    assert args[0] is None  # raw_input
+    assert args[1]["learning_objective"] == "add fractions"  # spec
+
+
+def test_post_runs_with_raw_input_returns_201_and_a_run_id():
+    with __import__("unittest.mock", fromlist=["patch"]).patch(
+        "server.main.run_manager.start_run", return_value="run-xyz"
+    ) as mock_start:
+        resp = client.post("/runs", json={
+            "raw_input": "Teach 6th graders how to add fractions with unlike denominators.",
+            "run_mode": "auto",
+        })
+    assert resp.status_code == 201
+    assert resp.json()["run_id"] == "run-xyz"
+    mock_start.assert_called_once()
+    args = mock_start.call_args.args
+    assert args[0] == "Teach 6th graders how to add fractions with unlike denominators."
+    assert args[1] is None  # spec
+
+
+def test_post_runs_400_when_neither_raw_input_nor_spec_provided():
+    resp = client.post("/runs", json={"run_mode": "auto"})
+    assert resp.status_code == 400
+
+
+def test_post_runs_400_when_both_raw_input_and_spec_provided():
+    resp = client.post("/runs", json={
+        "raw_input": "teach ratios",
+        "spec": {"learning_objective": "add fractions", "worked_example_expression": "3/4 + 1/8",
+                    "target_duration_minutes": 1, "audience": "6th grade"},
+        "run_mode": "auto",
+    })
+    assert resp.status_code == 400
 
 
 def test_get_run_status_404_for_unknown_run():

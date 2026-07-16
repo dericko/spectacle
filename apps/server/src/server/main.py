@@ -62,7 +62,8 @@ run_manager = RunManager(
 
 
 class StartRunRequest(BaseModel):
-    spec: dict
+    raw_input: str | None = None
+    spec: dict | None = None
     run_mode: str = "accept_edits"
     stub_llm: bool = False
 
@@ -74,7 +75,11 @@ def get_runs() -> list[dict]:
 
 @app.post("/runs", status_code=201)
 def post_runs(req: StartRunRequest) -> dict:
-    run_id = run_manager.start_run(req.spec, req.run_mode, stub_llm=req.stub_llm)
+    if req.raw_input is None and req.spec is None:
+        raise HTTPException(status_code=400, detail="either raw_input or spec is required")
+    if req.raw_input is not None and req.spec is not None:
+        raise HTTPException(status_code=400, detail="provide only one of raw_input or spec")
+    run_id = run_manager.start_run(req.raw_input, req.spec, req.run_mode, stub_llm=req.stub_llm)
     return {"run_id": run_id}
 
 

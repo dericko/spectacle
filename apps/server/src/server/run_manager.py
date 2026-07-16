@@ -31,10 +31,20 @@ from spectacle_core.nodes.safety_gate import default_safety_llm
 from spectacle_core.nodes.script_agent import default_script_llm
 from spectacle_core.tts import MacSayTTSProvider
 from spectacle_education import education_pack
-from spectacle_education.structure_agent import (
-    default_content_hint_llm,
-    default_guided_practice_expression_llm,
-)
+from spectacle_education.intake import lift_legacy_spec
+
+
+def _legacy_intake_llm_for(spec: dict):
+    """Build an intake_llm_fn that skips the real intake LLM entirely: the
+    legacy 4-field spec already fully determines the plan, so there is
+    nothing left for an LLM (real or stub) to compile."""
+    plan_dict = lift_legacy_spec(spec).model_dump(mode="json")
+
+    def _legacy_intake_llm(raw_input: str, prior_chat: list[dict], _plan: dict = plan_dict) -> dict:
+        return {"plan": _plan, "questions": []}
+
+    _legacy_intake_llm.fingerprint = "legacy_shim@0"
+    return _legacy_intake_llm
 
 
 class RunManager:
@@ -46,31 +56,41 @@ class RunManager:
         self.job_queue = job_queue if job_queue is not None else ThreadJobQueue()
         self.metadata.setup()
 
-    def start_run(self, spec: dict, run_mode: Literal["accept_edits", "auto"], stub_llm: bool = False) -> str:
+    def start_run(
+        self,
+        raw_input: str | None = None,
+        spec: dict | None = None,
+        run_mode: Literal["accept_edits", "auto"] = "accept_edits",
+        stub_llm: bool = False,
+    ) -> str:
         run_id = str(uuid.uuid4())
         self._statuses[run_id] = {"status": "running"}
-        name = spec.get("learning_objective") or run_id[:8]
+        if spec is not None:
+            name = spec.get("learning_objective") or run_id[:8]
+        else:
+            name = (raw_input or "")[:60] or run_id[:8]
         self.metadata.create_run(run_id, name)
-        self.job_queue.submit(lambda: self._execute_run(run_id, spec, run_mode, stub_llm))
+        self.job_queue.submit(lambda: self._execute_run(run_id, raw_input, spec, run_mode, stub_llm))
         return run_id
 
-    def _execute_run(self, run_id: str, spec: dict, run_mode: str, stub_llm: bool = False) -> None:
+    def _execute_run(
+        self, run_id: str, raw_input: str | None, spec: dict | None, run_mode: str, stub_llm: bool = False,
+    ) -> None:
         try:
+            if spec is not None:
+                intake_fn = _legacy_intake_llm_for(spec)
+            elif stub_llm:
+                from server.stub_llms import stub_intake_llm
+                intake_fn = stub_intake_llm
+            else:
+                intake_fn = None
+
             if stub_llm:
-                from server.stub_llms import (
-                    stub_content_hint,
-                    stub_guided_practice_expression,
-                    stub_safety_llm,
-                    stub_script_llm,
-                )
+                from server.stub_llms import stub_safety_llm, stub_script_llm
                 script_fn = stub_script_llm
-                content_hint_fn = stub_content_hint
-                guided_practice_fn = stub_guided_practice_expression
                 safety_fn = stub_safety_llm
             else:
                 script_fn = default_script_llm
-                content_hint_fn = default_content_hint_llm
-                guided_practice_fn = default_guided_practice_expression_llm
                 safety_fn = default_safety_llm
 
             store = LocalFileArtifactStore(self.artifact_root)
@@ -81,12 +101,12 @@ class RunManager:
                     tts_provider=MacSayTTSProvider(), checkpointer=checkpointer,
                     metadata_recorder=lambda h, stage, scene_id=None: self.metadata.record(run_id, h, stage, scene_id),
                     script_llm_fn=script_fn,
-                    content_hint_fn=content_hint_fn,
-                    guided_practice_expression_fn=guided_practice_fn,
+                    intake_llm_fn=intake_fn,
                     safety_llm_fn=safety_fn,
                 )
                 config = {"configurable": {"thread_id": run_id}}
-                result = graph.invoke({"spec": spec, "run_mode": run_mode}, config=config)
+                result = graph.invoke(
+                    {"raw_input": raw_input or "", "prior_chat": [], "run_mode": run_mode}, config=config)
                 interrupted = "__interrupt__" in result
                 final_status = "paused" if interrupted else "done"
                 stored: dict = {"status": final_status}
