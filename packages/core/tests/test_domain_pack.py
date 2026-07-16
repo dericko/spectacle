@@ -1,4 +1,4 @@
-from spectacle_core.domain_pack import ContentTree, SceneStub
+from spectacle_core.domain_pack import ContentTree, DomainPack, IntakeResultLike, SceneStub
 
 
 def test_scene_stub_defaults_expression_to_none():
@@ -22,3 +22,18 @@ def test_content_tree_holds_ordered_scenes():
     ]
     tree = ContentTree(spec_hash="deadbeef", scenes=stubs)
     assert [s.scene_id for s in tree.scenes] == ["intro_1", "worked_example_1"]
+
+
+def test_domain_pack_protocol_declares_intake_method():
+    assert "intake" in DomainPack.__protocol_attrs__ or hasattr(DomainPack, "intake")
+
+
+def test_intake_result_like_is_structural_protocol():
+    class FakeIntakeResult:
+        plan = None
+        clarifying_questions: list[str] = []
+
+    # Any object with the right shape satisfies the structural protocol,
+    # without domain_pack.py importing anything from domains/education.
+    fake = FakeIntakeResult()
+    assert isinstance(fake, IntakeResultLike)

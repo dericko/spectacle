@@ -1,4 +1,4 @@
-from typing import Literal, Protocol
+from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
@@ -37,10 +37,26 @@ class VerificationGate(Protocol):
     def __call__(self, scene: "SceneGraphEntry") -> VerificationOutcome: ...
 
 
+@runtime_checkable
+class IntakeResultLike(Protocol):
+    """Structural shape of a domain pack's intake() return value.
+
+    Defined here (rather than importing the education domain's concrete
+    IntakeResult) so packages/core never imports from domains/ -- any object
+    with a matching `.plan` / `.clarifying_questions` shape satisfies this
+    duck-typed protocol.
+    """
+
+    plan: BaseModel | None
+    clarifying_questions: list[str]
+
+
 class DomainPack(Protocol):
     spec_schema: type[BaseModel]
 
     def structure(self, spec: BaseModel) -> ContentTree: ...
+
+    def intake(self, raw_input: str, prior_chat: list[dict]) -> IntakeResultLike: ...
 
     def verification_gates(self, scene: "SceneGraphEntry") -> list[VerificationGate]: ...
 
