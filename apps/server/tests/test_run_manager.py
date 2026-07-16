@@ -100,3 +100,28 @@ def test_execute_run_stub_llm_legacy_spec_path_still_uses_legacy_intake_llm(tmp_
 
     kwargs = mock_build_graph.call_args.kwargs
     assert kwargs["intake_llm_fn"].fingerprint == "legacy_shim@0"
+
+
+def test_execute_run_distinct_legacy_specs_produce_distinct_raw_input_for_the_intake_cache_key(tmp_path):
+    # intake_node's cache key is derived from state["raw_input"] (+ prior_chat + fingerprint).
+    # The legacy shim's fingerprint is a constant ("legacy_shim@0") and it ignores its
+    # (raw_input, prior_chat) call args entirely, so if effective_raw_input didn't vary with
+    # the spec's actual content, two different legacy specs run against the same artifact
+    # store would collide on the same cache key and the second run would silently be served
+    # the first run's plan.
+    other_spec = {
+        "learning_objective": "simplify fractions", "worked_example_expression": "12/18",
+        "target_duration_minutes": 2, "audience": "7th grade",
+    }
+    manager = RunManager(artifact_root=tmp_path, pg_conn=_PG_CONN)
+    build_graph_patch, saver_patch, mock_graph = _mocked_build_graph_and_saver()
+
+    with build_graph_patch, saver_patch as mock_saver_cls:
+        mock_saver_cls.from_conn_string.return_value.__enter__.return_value = MagicMock()
+        manager._execute_run("run-legacy-a", None, _LEGACY_SPEC, "auto")
+        raw_input_a = mock_graph.invoke.call_args.args[0]["raw_input"]
+
+        manager._execute_run("run-legacy-b", None, other_spec, "auto")
+        raw_input_b = mock_graph.invoke.call_args.args[0]["raw_input"]
+
+    assert raw_input_a != raw_input_b

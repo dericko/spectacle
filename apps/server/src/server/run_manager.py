@@ -79,11 +79,18 @@ class RunManager:
         try:
             if spec is not None:
                 intake_fn = _legacy_intake_llm_for(spec)
+                # The legacy shim ignores its (raw_input, prior_chat) args entirely, so
+                # intake_node's cache key must still vary with the spec's actual content
+                # (via raw_input) -- otherwise every legacy-spec run collides on the same
+                # cache key and silently replays the first run's plan for a different lesson.
+                effective_raw_input = json.dumps(spec, sort_keys=True)
             elif stub_llm:
                 from server.stub_llms import stub_intake_llm
                 intake_fn = stub_intake_llm
+                effective_raw_input = raw_input or ""
             else:
                 intake_fn = None
+                effective_raw_input = raw_input or ""
 
             if stub_llm:
                 from server.stub_llms import stub_safety_llm, stub_script_llm
@@ -106,7 +113,7 @@ class RunManager:
                 )
                 config = {"configurable": {"thread_id": run_id}}
                 result = graph.invoke(
-                    {"raw_input": raw_input or "", "prior_chat": [], "run_mode": run_mode}, config=config)
+                    {"raw_input": effective_raw_input, "prior_chat": [], "run_mode": run_mode}, config=config)
                 interrupted = "__interrupt__" in result
                 final_status = "paused" if interrupted else "done"
                 stored: dict = {"status": final_status}
